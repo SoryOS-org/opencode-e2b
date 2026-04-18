@@ -3,8 +3,11 @@ import type { WorkspaceInfo } from "@opencode-ai/plugin"
 import type {
   E2BWorkspacePluginOptions,
   NormalizedE2BWorkspaceConfig,
+  PersistedWorkspaceContract,
   PersistedWorkspaceExtra,
 } from "./types.js"
+
+export const CURRENT_WORKSPACE_API_VERSION = "1"
 
 const DEFAULT_IGNORE = [
   ".git",
@@ -22,7 +25,8 @@ const DEFAULT_IGNORE = [
  * rest of the package.
  */
 export function normalizeOptions(options?: E2BWorkspacePluginOptions): NormalizedE2BWorkspaceConfig {
-  return {
+  const config = {
+    workspaceApiVersion: CURRENT_WORKSPACE_API_VERSION,
     template: options?.template ?? "base",
     sandboxTimeoutMs: options?.sandboxTimeoutMs ?? 60 * 60 * 1000,
     projectPath: options?.projectPath ?? "/home/user/project",
@@ -49,15 +53,27 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
       followSymlinks: options?.upload?.followSymlinks ?? false,
     },
     metadata: options?.metadata ?? {},
+    flags: [] as string[],
+  } satisfies NormalizedE2BWorkspaceConfig
+
+  return {
+    ...config,
+    flags: buildWorkspaceFlags(config),
   }
 }
 
 /**
  * Create the persisted `extra` blob stored with the workspace row.
  */
-export function buildPersistedExtra(config: NormalizedE2BWorkspaceConfig): PersistedWorkspaceExtra {
+export function buildPersistedExtra(
+  config: NormalizedE2BWorkspaceConfig,
+  runtimeVersion: string,
+): PersistedWorkspaceExtra {
   return {
     e2b: {
+      workspaceApiVersion: config.workspaceApiVersion,
+      runtimeVersion,
+      flags: config.flags,
       template: config.template,
       projectPath: config.projectPath,
       serverPort: config.serverPort,
@@ -82,14 +98,42 @@ export function resolveWorkspaceConfig(
 
   return {
     ...normalized,
+    workspaceApiVersion: extra.e2b.workspaceApiVersion,
     template: extra.e2b.template,
     projectPath: extra.e2b.projectPath,
     serverPort: extra.e2b.serverPort,
     secure: extra.e2b.secure,
+    flags: extra.e2b.flags,
     metadata: {
       ...normalized.metadata,
       ...extra.e2b.metadata,
     },
+  }
+}
+
+/**
+ * Resolve the persisted workspace contract used for sandbox metadata and
+ * compatibility checks. When older workspace rows are missing the contract, the
+ * current runtime values are used as a best-effort fallback.
+ */
+export function resolveWorkspaceContract(
+  info: WorkspaceInfo,
+  config: NormalizedE2BWorkspaceConfig,
+  runtimeVersion: string,
+): PersistedWorkspaceContract {
+  const extra = readPersistedExtra(info)
+  if (!extra) {
+    return {
+      workspaceApiVersion: config.workspaceApiVersion,
+      runtimeVersion,
+      flags: config.flags,
+    }
+  }
+
+  return {
+    workspaceApiVersion: extra.e2b.workspaceApiVersion,
+    runtimeVersion: extra.e2b.runtimeVersion,
+    flags: extra.e2b.flags,
   }
 }
 
@@ -111,6 +155,11 @@ export function readPersistedExtra(info: WorkspaceInfo): PersistedWorkspaceExtra
 
   const candidate = info.extra as Partial<PersistedWorkspaceExtra>
   if (!candidate.e2b) return undefined
+  if (typeof candidate.e2b.workspaceApiVersion !== "string") return undefined
+  if (typeof candidate.e2b.runtimeVersion !== "string") return undefined
+  if (!Array.isArray(candidate.e2b.flags) || !candidate.e2b.flags.every((flag) => typeof flag === "string")) {
+    return undefined
+  }
   if (typeof candidate.e2b.template !== "string") return undefined
   if (typeof candidate.e2b.projectPath !== "string") return undefined
   if (typeof candidate.e2b.serverPort !== "number") return undefined
@@ -118,4 +167,29 @@ export function readPersistedExtra(info: WorkspaceInfo): PersistedWorkspaceExtra
   if (!candidate.e2b.metadata || typeof candidate.e2b.metadata !== "object") return undefined
 
   return candidate as PersistedWorkspaceExtra
+}
+
+/**
+ * Derive stable provenance flags from the current scaffold behavior. Missing
+ * future flags should be interpreted as unknown rather than false.
+ */
+function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">): string[] {
+  const flags = new Set<string>([
+    "sync:local-snapshot-upload",
+    "repo:git-init",
+  ])
+
+  if (config.bootstrap.prepareCommands.some((command) => command.trim())) {
+    flags.add("bootstrap:prepare-commands")
+  }
+
+  if (config.bootstrap.installCommand.trim()) {
+    flags.add("install:runtime-bootstrap")
+  }
+
+  if (/\bopencode\b/.test(config.bootstrap.startCommand)) {
+    flags.add("serve:opencode-cli")
+  }
+
+  return [...flags]
 }

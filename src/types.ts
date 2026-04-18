@@ -60,6 +60,7 @@ export type E2BWorkspacePluginOptions = PluginOptions & {
  * handling in every module.
  */
 export type NormalizedE2BWorkspaceConfig = {
+  workspaceApiVersion: string
   template: string
   sandboxTimeoutMs: number
   projectPath: string
@@ -69,6 +70,18 @@ export type NormalizedE2BWorkspaceConfig = {
   bootstrap: Required<E2BBootstrapOptions>
   upload: Required<E2BUploadOptions>
   metadata: Record<string, string>
+  flags: string[]
+}
+
+/**
+ * Stable workspace contract details that are persisted both in OpenCode's
+ * workspace row and in E2B sandbox metadata. These fields are intentionally
+ * provider-neutral enough to survive future implementation changes.
+ */
+export type PersistedWorkspaceContract = {
+  workspaceApiVersion: string
+  runtimeVersion: string
+  flags: string[]
 }
 
 /**
@@ -78,6 +91,9 @@ export type NormalizedE2BWorkspaceConfig = {
  */
 export type PersistedWorkspaceExtra = {
   e2b: {
+    workspaceApiVersion: string
+    runtimeVersion: string
+    flags: string[]
     template: string
     projectPath: string
     serverPort: number

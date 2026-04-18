@@ -26,13 +26,35 @@ This repository contains a small TypeScript plugin package for OpenCode's experi
 
 OpenCode persists the result of `configure()` before it calls `create()`. That means the adaptor cannot create an E2B sandbox and then save the generated `sandboxId` into the workspace row afterward.
 
-The current workaround is metadata-based discovery:
+The current workaround is metadata-based discovery plus a small persisted workspace contract. The plugin stores the contract in both `WorkspaceInfo.extra` and E2B sandbox metadata:
 
 - `opencodeWorkspaceId`
 - `opencodeProjectId`
-- `opencodeWorkspaceType`
+- `opencodeWorkspaceApiVersion`
+- `opencodeRuntimeVersion`
+- `opencodeFlags`
 
 The plugin writes those values into E2B sandbox metadata at creation time and looks sandboxes up with `Sandbox.list({ query: { metadata } })` later.
+
+`opencodeFlags` is a serialized list of namespaced provenance markers. Today the scaffold derives flags such as:
+
+- `sync:local-snapshot-upload`
+- `repo:git-init`
+- `bootstrap:prepare-commands`
+- `install:runtime-bootstrap`
+- `serve:opencode-cli`
+
+Missing flags should be treated as `unknown`, not `false`, so older sandboxes can still be reconciled safely.
+
+## Version handling
+
+- The local OpenCode runtime version is resolved from `GET /global/health` on the local OpenCode server.
+- The remote sandbox version is probed from `GET /global/health` on the remote OpenCode server, with `opencode --version` as a fallback.
+- The plugin refuses to attach to a sandbox when:
+  - `opencodeWorkspaceApiVersion` does not match the current workspace contract version
+  - the probed remote OpenCode version does not match the local OpenCode version
+
+That keeps the first version conservative: it detects mismatches clearly before we add in-place upgrade or migration flows.
 
 ## Usage
 

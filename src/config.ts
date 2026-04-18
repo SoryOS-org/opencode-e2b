@@ -25,12 +25,18 @@ const DEFAULT_IGNORE = [
  * rest of the package.
  */
 export function normalizeOptions(options?: E2BWorkspacePluginOptions): NormalizedE2BWorkspaceConfig {
+  const sandboxTimeoutMs = requirePositiveInteger(options?.sandboxTimeoutMs, "sandboxTimeoutMs") ?? 60 * 60 * 1000
+  const serverPort = requirePositiveInteger(options?.serverPort, "serverPort") ?? 4096
+  const waitForTimeoutMs =
+    requirePositiveInteger(options?.bootstrap?.waitForTimeoutMs, "bootstrap.waitForTimeoutMs") ?? 30_000
+  const batchSize = requirePositiveInteger(options?.upload?.batchSize, "upload.batchSize") ?? 100
+
   const config = {
     workspaceApiVersion: CURRENT_WORKSPACE_API_VERSION,
     template: options?.template ?? "base",
-    sandboxTimeoutMs: options?.sandboxTimeoutMs ?? 60 * 60 * 1000,
+    sandboxTimeoutMs,
     projectPath: options?.projectPath ?? "/home/user/project",
-    serverPort: options?.serverPort ?? 4096,
+    serverPort,
     secure: options?.secure ?? false,
     network: {
       allowPublicTraffic: options?.network?.allowPublicTraffic ?? true,
@@ -44,12 +50,12 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
       startCommand:
         options?.bootstrap?.startCommand ?? "opencode serve --hostname 0.0.0.0 --port 4096",
       waitForPath: options?.bootstrap?.waitForPath ?? "/global/event",
-      waitForTimeoutMs: options?.bootstrap?.waitForTimeoutMs ?? 30_000,
+      waitForTimeoutMs,
     },
     upload: {
       ignore: options?.upload?.ignore ?? [...DEFAULT_IGNORE],
       includeDotGit: options?.upload?.includeDotGit ?? false,
-      batchSize: options?.upload?.batchSize ?? 100,
+      batchSize,
       followSymlinks: options?.upload?.followSymlinks ?? false,
     },
     metadata: options?.metadata ?? {},
@@ -192,4 +198,16 @@ function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">
   }
 
   return [...flags]
+}
+
+/**
+ * Validate optional numeric configuration before runtime behavior depends on it.
+ */
+function requirePositiveInteger(value: number | undefined, fieldName: string): number | undefined {
+  if (value === undefined) return undefined
+  if (Number.isInteger(value) && value > 0) {
+    return value
+  }
+
+  throw new Error(`Expected ${fieldName} to be a positive integer`)
 }

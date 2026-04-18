@@ -1,4 +1,4 @@
-import { readFile, readdir, stat } from "node:fs/promises"
+import { lstat, readFile, readdir, realpath, stat } from "node:fs/promises"
 import path from "node:path"
 import { posix } from "node:path"
 
@@ -10,6 +10,15 @@ type SnapshotFile = {
   localPath: string
   relativePath: string
   data: Buffer
+}
+
+/**
+ * State shared across the recursive directory walk so symlink handling stays
+ * bounded to the workspace root and cannot revisit the same real directory.
+ */
+type WalkState = {
+  rootRealPath: string
+  visitedDirectories: Set<string>
 }
 
 /**
@@ -40,7 +49,10 @@ export async function uploadLocalSnapshot(params: {
  * Recursively collect uploadable files from the local project directory.
  */
 async function collectSnapshotFiles(localRoot: string, upload: Required<E2BUploadOptions>): Promise<SnapshotFile[]> {
-  const entries = await walkDirectory(localRoot, localRoot, upload)
+  const entries = await walkDirectory(localRoot, localRoot, upload, {
+    rootRealPath: await realpath(localRoot),
+    visitedDirectories: new Set<string>(),
+  })
   const files: SnapshotFile[] = []
 
   for (const entry of entries) {
@@ -61,7 +73,15 @@ async function walkDirectory(
   currentPath: string,
   localRoot: string,
   upload: Required<E2BUploadOptions>,
+  state: WalkState,
 ): Promise<string[]> {
+  const currentRealPath = await realpath(currentPath)
+  assertWithinRoot(state.rootRealPath, currentRealPath, currentPath)
+  if (state.visitedDirectories.has(currentRealPath)) {
+    return []
+  }
+  state.visitedDirectories.add(currentRealPath)
+
   const discovered = await readdir(currentPath, { withFileTypes: true })
   const files: string[] = []
 
@@ -70,11 +90,17 @@ async function walkDirectory(
     const relativePath = normalizeRelativePath(path.relative(localRoot, absolutePath))
     if (shouldIgnore(relativePath, upload)) continue
 
-    if (entry.isSymbolicLink() && !upload.followSymlinks) continue
+    const entryLstat = await lstat(absolutePath)
+    if (entryLstat.isSymbolicLink()) {
+      if (!upload.followSymlinks) continue
+
+      const resolvedPath = await realpath(absolutePath)
+      assertWithinRoot(state.rootRealPath, resolvedPath, absolutePath)
+    }
 
     const entryStat = await stat(absolutePath)
     if (entryStat.isDirectory()) {
-      files.push(...(await walkDirectory(absolutePath, localRoot, upload)))
+      files.push(...(await walkDirectory(absolutePath, localRoot, upload, state)))
       continue
     }
 
@@ -122,6 +148,21 @@ function shouldIgnore(relativePath: string, upload: Required<E2BUploadOptions>):
  */
 function normalizeRelativePath(relativePath: string): string {
   return relativePath.split(path.sep).join("/")
+}
+
+/**
+ * Ensure followed symlinks stay within the workspace root before any files are
+ * read and uploaded into the sandbox.
+ */
+function assertWithinRoot(rootRealPath: string, candidateRealPath: string, sourcePath: string): void {
+  const relativePath = path.relative(rootRealPath, candidateRealPath)
+  const isWithinRoot =
+    relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  if (isWithinRoot) {
+    return
+  }
+
+  throw new Error(`Refusing to follow symlink outside workspace root: ${sourcePath}`)
 }
 
 /**

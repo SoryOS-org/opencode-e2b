@@ -10,6 +10,7 @@ import {
 } from "./config.js"
 import {
   createWorkspaceSandbox,
+  findWorkspaceSandboxRecord,
   removeWorkspaceSandbox,
   readSandboxContract,
   requireWorkspaceSandboxRecord,
@@ -109,6 +110,25 @@ async function createWorkspace(
   const config = resolveWorkspaceConfig(info, options)
   const runtimeVersion = await runtimeVersionPromise
   const contract = resolveWorkspaceContract(info, config, runtimeVersion)
+  const existingRecord = await findWorkspaceSandboxRecord(info, config)
+  if (existingRecord) {
+    try {
+      await assertWorkspaceCompatibility({
+        workspaceID: info.id,
+        localRuntimeVersion: runtimeVersion,
+        persistedContract: contract,
+        sandboxContract: readSandboxContract(existingRecord.metadata),
+        sandbox: existingRecord.sandbox,
+        baseUrl: sandboxBaseUrl(existingRecord.sandbox, config),
+        projectPath: config.projectPath,
+      })
+
+      return
+    } catch {
+      await existingRecord.sandbox.kill()
+    }
+  }
+
   const sandbox = await createWorkspaceSandbox(info, config, env, contract)
 
   try {

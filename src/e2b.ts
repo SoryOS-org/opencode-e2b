@@ -13,7 +13,17 @@ const RUNTIME_VERSION_METADATA_KEY = "opencodeRuntimeVersion"
 const FLAGS_METADATA_KEY = "opencodeFlags"
 
 type WorkspaceSandboxRecord = {
+  sandboxId: string
   sandbox: Sandbox
+  metadata: Record<string, string>
+}
+
+/**
+ * Lightweight sandbox match data returned from E2B listing before a concrete
+ * sandbox connection is opened.
+ */
+type WorkspaceSandboxMatch = {
+  sandboxId: string
   metadata: Record<string, string>
 }
 
@@ -73,6 +83,34 @@ export async function findWorkspaceSandboxRecord(
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
 ): Promise<WorkspaceSandboxRecord | undefined> {
+  const matches = await listWorkspaceSandboxMatches(info)
+  if (matches.length === 0) {
+    return undefined
+  }
+  if (matches.length > 1) {
+    throw new Error(buildDuplicateSandboxError(info, matches))
+  }
+
+  const [match] = matches
+  if (!match) {
+    return undefined
+  }
+
+  return {
+    sandboxId: match.sandboxId,
+    sandbox: await Sandbox.connect(match.sandboxId, {
+      timeoutMs: config.sandboxTimeoutMs,
+    }),
+    metadata: match.metadata,
+  }
+}
+
+/**
+ * List every running or paused sandbox that advertises the workspace metadata
+ * contract, so callers can decide whether a missing, single, or duplicate
+ * match is acceptable for the current lifecycle operation.
+ */
+async function listWorkspaceSandboxMatches(info: WorkspaceInfo): Promise<WorkspaceSandboxMatch[]> {
   const paginator = Sandbox.list({
     query: {
       metadata: {
@@ -83,20 +121,19 @@ export async function findWorkspaceSandboxRecord(
     limit: 100,
   })
 
+  const matches: WorkspaceSandboxMatch[] = []
+
   while (paginator.hasNext) {
     const sandboxes = await paginator.nextItems()
-    const sandboxInfo = sandboxes[0]
-    if (!sandboxInfo) continue
-
-    return {
-      sandbox: await Sandbox.connect(sandboxInfo.sandboxId, {
-        timeoutMs: config.sandboxTimeoutMs,
-      }),
-      metadata: sandboxInfo.metadata ?? {},
+    for (const sandboxInfo of sandboxes) {
+      matches.push({
+        sandboxId: sandboxInfo.sandboxId,
+        metadata: sandboxInfo.metadata ?? {},
+      })
     }
   }
 
-  return undefined
+  return matches
 }
 
 /**
@@ -156,9 +193,17 @@ export async function removeWorkspaceSandbox(
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
 ): Promise<void> {
-  const sandbox = await findWorkspaceSandbox(info, config)
-  if (!sandbox) return
-  await sandbox.kill()
+  const matches = await listWorkspaceSandboxMatches(info)
+  if (matches.length === 0) return
+
+  await Promise.all(
+    matches.map(async (match) => {
+      const sandbox = await Sandbox.connect(match.sandboxId, {
+        timeoutMs: config.sandboxTimeoutMs,
+      })
+      await sandbox.kill()
+    }),
+  )
 }
 
 /**
@@ -197,4 +242,13 @@ function parseFlags(rawFlags: string | undefined): string[] {
   }
 
   return []
+}
+
+/**
+ * Build a deterministic duplicate-sandbox error instead of silently choosing an
+ * arbitrary match from the provider list order.
+ */
+function buildDuplicateSandboxError(info: WorkspaceInfo, matches: WorkspaceSandboxMatch[]): string {
+  const sandboxIds = matches.map((match) => match.sandboxId).join(", ")
+  return `Found multiple E2B sandboxes for workspace ${info.id}: ${sandboxIds}`
 }

@@ -140,7 +140,10 @@ function createLazyRuntimeVersionResolver(serverUrl: URL): () => Promise<string>
   let runtimeVersionPromise: Promise<string> | undefined
 
   return () => {
-    runtimeVersionPromise ??= resolveLocalRuntimeVersion(serverUrl)
+    runtimeVersionPromise ??= resolveLocalRuntimeVersion(serverUrl).catch((error) => {
+      runtimeVersionPromise = undefined
+      throw error
+    })
     return runtimeVersionPromise
   }
 }

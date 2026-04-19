@@ -4,6 +4,13 @@ import { CURRENT_WORKSPACE_API_VERSION } from "./config.js"
 import type { PersistedWorkspaceContract } from "./types.js"
 
 const GLOBAL_HEALTH_PATH = "/global/health"
+const HEALTH_TIMEOUT_MS = 1_500
+
+type PluginLogger = {
+  info(message: string, extra?: Record<string, unknown>): Promise<void>
+  warn(message: string, extra?: Record<string, unknown>): Promise<void>
+  error(message: string, extra?: Record<string, unknown>): Promise<void>
+}
 
 type SandboxMetadataContract = {
   workspaceApiVersion?: string
@@ -14,8 +21,8 @@ type SandboxMetadataContract = {
 /**
  * Resolve the version of the currently running local OpenCode server.
  */
-export async function resolveLocalRuntimeVersion(serverUrl: URL): Promise<string> {
-  const health = await fetchRuntimeHealth(serverUrl)
+export async function resolveLocalRuntimeVersion(serverUrl: URL, logger?: PluginLogger): Promise<string> {
+  const health = await fetchRuntimeHealth(serverUrl, { logger, target: "local-controller" })
   return health.version
 }
 
@@ -28,9 +35,10 @@ export async function probeRemoteRuntimeVersion(params: {
   baseUrl: URL
   sandbox: Sandbox
   projectPath: string
+  logger?: PluginLogger
 }): Promise<string> {
   try {
-    const health = await fetchRuntimeHealth(params.baseUrl)
+    const health = await fetchRuntimeHealth(params.baseUrl, { logger: params.logger, target: "remote-workspace" })
     return health.version
   } catch (healthError) {
     try {
@@ -69,6 +77,7 @@ export async function assertWorkspaceCompatibility(params: {
     baseUrl: params.baseUrl,
     sandbox: params.sandbox,
     projectPath: params.projectPath,
+    logger: undefined,
   })
   if (remoteRuntimeVersion === params.localRuntimeVersion) return
 
@@ -87,23 +96,55 @@ export async function assertWorkspaceCompatibility(params: {
 /**
  * Fetch the OpenCode health payload from a local or remote server URL.
  */
-async function fetchRuntimeHealth(baseUrl: URL): Promise<{ healthy: true; version: string }> {
+async function fetchRuntimeHealth(
+  baseUrl: URL,
+  options?: {
+    logger?: PluginLogger
+    target: string
+  },
+): Promise<{ healthy: true; version: string }> {
   const healthUrl = new URL(GLOBAL_HEALTH_PATH, baseUrl)
-  const response = await fetch(healthUrl, {
-    signal: AbortSignal.timeout(1_500),
+  const startedAt = Date.now()
+
+  await options?.logger?.info("runtime health probe start", {
+    target: options.target,
+    healthUrl: healthUrl.toString(),
+    timeoutMs: HEALTH_TIMEOUT_MS,
   })
-  if (!response.ok) {
-    throw new Error(`Health check failed with status ${response.status}`)
-  }
 
-  const payload = (await response.json()) as Partial<{ healthy: boolean; version: unknown }>
-  if (payload.healthy !== true || typeof payload.version !== "string") {
-    throw new Error(`Unexpected health payload from ${healthUrl}`)
-  }
+  try {
+    const response = await fetch(healthUrl, {
+      signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+    })
+    if (!response.ok) {
+      throw new Error(`Health check failed with status ${response.status}`)
+    }
 
-  return {
-    healthy: true,
-    version: payload.version,
+    const payload = (await response.json()) as Partial<{ healthy: boolean; version: unknown }>
+    if (payload.healthy !== true || typeof payload.version !== "string") {
+      throw new Error(`Unexpected health payload from ${healthUrl}`)
+    }
+
+    await options?.logger?.info("runtime health probe success", {
+      target: options.target,
+      healthUrl: healthUrl.toString(),
+      durationMs: Date.now() - startedAt,
+      version: payload.version,
+    })
+
+    return {
+      healthy: true,
+      version: payload.version,
+    }
+  } catch (error) {
+    await options?.logger?.error("runtime health probe failed", {
+      target: options.target,
+      healthUrl: healthUrl.toString(),
+      timeoutMs: HEALTH_TIMEOUT_MS,
+      durationMs: Date.now() - startedAt,
+      error: errorMessage(error),
+    })
+    throw error
   }
 }
 

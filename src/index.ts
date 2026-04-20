@@ -39,6 +39,10 @@ export const E2BWorkspacePlugin: Plugin = async (
   // surfaces the problem at plugin load time rather than deep inside an E2B
   // SDK call during workspace creation.
   const options = validatePluginOptions(rawOptions)
+  // Fail fast if the E2B credential is missing. The SDK would otherwise throw
+  // a generic AuthenticationError only when the first Sandbox.create call
+  // runs, by which point the user has already committed to the workflow.
+  assertE2BApiKeyAvailable()
   const logger = createPluginLogger(client)
   const getLocalRuntimeVersion = createLazyRuntimeVersionResolver(serverUrl, logger)
 
@@ -340,4 +344,21 @@ function createPluginLogger(client: PluginInput["client"]): PluginLogger {
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
   return String(error)
+}
+
+/**
+ * Preflight check for the E2B credential the SDK reads from the environment.
+ * The SDK itself validates this at API call time, but doing it up front lets
+ * us deliver a plugin-specific error (with a link to the E2B dashboard)
+ * instead of a generic AuthenticationError the user first hits several
+ * seconds into workspace provisioning.
+ */
+function assertE2BApiKeyAvailable(): void {
+  const key = process.env.E2B_API_KEY
+  if (key && key.trim() !== "") return
+
+  throw new Error(
+    "E2B_API_KEY is not set. Export it in your shell (or OpenCode launch env) " +
+      "before enabling the e2b workspace plugin. Get a key at https://e2b.dev/dashboard.",
+  )
 }

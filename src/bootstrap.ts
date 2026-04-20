@@ -5,7 +5,7 @@ import { Sandbox } from "e2b"
 
 import type { NormalizedE2BWorkspaceConfig, PluginLogger } from "./types.js"
 import { sandboxBaseUrl, sandboxTargetHeaders } from "./e2b.js"
-import { BOOTSTRAP_READY_MARKER } from "./template.js"
+import { BOOTSTRAP_READY_MARKER, RUNTIME_ENV_FILE } from "./template.js"
 
 /**
  * Absolute path inside the sandbox where the baked template's start command
@@ -22,18 +22,25 @@ const START_COMMAND_LOG_PATH = "/tmp/opencode-serve.log"
  * managed template is responsible for launching opencode itself — this
  * function only arranges the preconditions and waits for the server to
  * become reachable.
+ *
+ * The order of operations matters: the per-workspace env file must be on
+ * disk before the bootstrap-ready marker is written, because the template's
+ * baked start command only polls the marker and sources the env file once
+ * without retries.
  */
 export async function bootstrapWorkspace(params: {
   sandbox: Sandbox
   info: WorkspaceInfo
   config: NormalizedE2BWorkspaceConfig
   runtimeVersion: string
+  env: Record<string, string | undefined>
   logger?: PluginLogger
 }): Promise<void> {
   void params.runtimeVersion
   await runPrepareCommands(params.sandbox, params.config)
   await ensureGitRepository(params.sandbox, params.info, params.config)
   await writeProjectMarker(params.sandbox, params.info, params.config)
+  await writeRuntimeEnvFile(params.sandbox, params.env, params.logger)
   await signalBootstrapReady(params.sandbox, params.logger)
   await waitForServerReady(params.sandbox, params.config)
 }
@@ -88,6 +95,53 @@ async function writeProjectMarker(
   config: NormalizedE2BWorkspaceConfig,
 ): Promise<void> {
   await sandbox.files.write(posix.join(config.projectPath, ".git", "opencode"), info.projectID)
+}
+
+/**
+ * Render the per-workspace env map into a POSIX-sh file and write it to the
+ * sandbox. The baked template's start command sources this file (with
+ * `set -a` / `.` / `set +a`) before exec'ing opencode, so every non-empty
+ * entry becomes an exported environment variable visible to the server.
+ *
+ * Concretely this is the delivery channel for the envs OpenCode passes to
+ * `adaptor.create(config, env)`:
+ *   - OPENCODE_WORKSPACE_ID
+ *   - OPENCODE_EXPERIMENTAL_WORKSPACES
+ *   - OPENCODE_AUTH_CONTENT
+ *   - OTEL_EXPORTER_OTLP_*
+ *
+ * `Sandbox.create({envs})` only applies to subsequent `commands.run` calls,
+ * not to the template's init command — without this file the server would
+ * start missing those envs and, most importantly, run with sync disabled.
+ *
+ * Values are single-quoted with every embedded `'` replaced by `'\''` so
+ * arbitrary payloads (including JSON blobs with quotes and newlines) round-
+ * trip into the child environment unmodified. `undefined` values are
+ * filtered out so we never emit `export KEY='undefined'`. Only the set of
+ * keys is logged — the values may contain auth material.
+ */
+async function writeRuntimeEnvFile(
+  sandbox: Sandbox,
+  env: Record<string, string | undefined>,
+  logger?: PluginLogger,
+): Promise<void> {
+  const entries = Object.entries(env).filter(
+    (entry): entry is [string, string] => typeof entry[1] === "string",
+  )
+
+  const lines = [
+    "# Written by opencode-e2b bootstrap; sourced by the managed template start command.",
+    "# Do not edit: regenerated on every workspace create.",
+    ...entries.map(([key, value]) => `export ${key}=${shellSingleQuote(value)}`),
+    "",
+  ]
+
+  await sandbox.files.write(RUNTIME_ENV_FILE, lines.join("\n"))
+
+  await logger?.info("runtime env file written", {
+    envPath: RUNTIME_ENV_FILE,
+    keys: entries.map(([key]) => key),
+  })
 }
 
 /**
@@ -204,5 +258,15 @@ async function sleep(ms: number): Promise<void> {
  * Quote a shell path for remote command execution.
  */
 function shellQuote(value: string): string {
+  return shellSingleQuote(value)
+}
+
+/**
+ * Single-quote a value for safe embedding in a POSIX-sh command or env file.
+ * Every embedded single quote is escaped as `'\''` so the resulting string
+ * round-trips any payload, including JSON blobs and newlines, without
+ * letting the shell reinterpret the content.
+ */
+function shellSingleQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`
 }

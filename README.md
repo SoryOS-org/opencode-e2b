@@ -46,9 +46,13 @@ The plugin writes those values into E2B sandbox metadata at creation time and lo
 - `repo:git-init`
 - `bootstrap:prepare-commands`
 - `template:runtime-baked`
+- `template:env-injected-startup`
 - `template:upstream-build-tracked`
 
-Missing flags should be treated as `unknown`, not `false`, so older sandboxes can still be reconciled safely. Sandboxes that still carry the older `template:managed-idle-start` flag (no `template:runtime-baked`) are considered incompatible and replaced on next reuse.
+Missing flags should be treated as `unknown`, not `false`, so older sandboxes can still be reconciled safely. Sandboxes are considered incompatible and replaced on next reuse when:
+
+- they carry the legacy `template:managed-idle-start` flag without `template:runtime-baked` (pre-rev-2 idle-start design), or
+- they carry `template:runtime-baked` without `template:env-injected-startup` (rev-2 sandboxes whose baked start command never received the per-workspace envs OpenCode delivers through `adaptor.create`, which silently disables sync on the remote).
 
 ## Version handling
 
@@ -104,7 +108,8 @@ OPENCODE_EXPERIMENTAL_WORKSPACES=true opencode
 
 - The scaffold defaults to the prebuilt E2B `opencode` template as the upstream base, which provides a general sandbox image with `npm` available.
 - The managed derived template purges any pre-baked `opencode` binary from the base image and installs the pinned version via `npm install -g opencode-ai@<runtimeVersion>` at build time, so spawn-time PATH ordering cannot shadow the runtime.
-- The template's start command waits for the plugin to create `/tmp/.opencode-e2b-bootstrap-ready`, then `exec`s the installed `opencode` by absolute path (recorded at build time under `/opt/opencode-e2b/bin-path`). Combined stdout/stderr land in `/tmp/opencode-serve.log` so the plugin can tail them on readiness timeout.
+- The template's start command waits for the plugin to create `/tmp/.opencode-e2b-bootstrap-ready`, sources the per-sandbox env file at `/tmp/.opencode-e2b.env`, then `exec`s the installed `opencode` by absolute path (recorded at build time under `/opt/opencode-e2b/bin-path`). Combined stdout/stderr land in `/tmp/opencode-serve.log` so the plugin can tail them on readiness timeout.
+- Per-workspace envs OpenCode delivers via `adaptor.create(config, env)` — `OPENCODE_WORKSPACE_ID`, `OPENCODE_EXPERIMENTAL_WORKSPACES`, `OPENCODE_AUTH_CONTENT`, `OTEL_EXPORTER_OTLP_*` — are written to `/tmp/.opencode-e2b.env` in POSIX-sh `export KEY='value'` form before the bootstrap-ready marker is touched. The baked start command sources that file so the envs reach `opencode serve`. The on-disk env file is required because E2B's `Sandbox.create({envs})` only applies to subsequent `sandbox.commands.run` calls, not to the template's init command.
 - The managed template alias is keyed by the upstream base-template build, pinned runtime version, project path, and server port. Changing any of those produces a new alias and triggers a fresh template build on next use; older sandboxes are detected as outdated and replaced.
 - The scaffold defaults to public sandbox traffic for the remote workspace URL.
 - `bootstrap.installCommand` and `bootstrap.startCommand` are deprecated — the pinned runtime is baked into the template and launched by the template's init command. The fields are still accepted by the config schema so old configs load, but the plugin logs a warning and ignores their values. `bootstrap.prepareCommands` still runs after upload and before the bootstrap-ready marker is written.

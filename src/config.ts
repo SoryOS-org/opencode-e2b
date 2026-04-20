@@ -265,6 +265,13 @@ function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">
     // spawn with the pinned opencode already installed and start via a
     // marker-gated exec in the template's init command. See src/template.ts.
     "template:runtime-baked",
+    // Per-workspace envs (OPENCODE_WORKSPACE_ID, OPENCODE_EXPERIMENTAL_WORKSPACES,
+    // OPENCODE_AUTH_CONTENT, OTEL_*) are written to /tmp/.opencode-e2b.env
+    // before the bootstrap-ready marker and sourced by the baked start
+    // command. Sandboxes missing this flag were provisioned under managed
+    // template rev 2 with sync effectively disabled and get replaced on
+    // next reuse.
+    "template:env-injected-startup",
     "template:upstream-build-tracked",
   ])
 

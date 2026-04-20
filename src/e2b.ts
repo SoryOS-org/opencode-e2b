@@ -62,13 +62,21 @@ export function buildSandboxMetadata(
  * Create an E2B sandbox for the requested workspace. The sandbox spawns from
  * a managed derived template that bakes in the pinned OpenCode runtime, so
  * the only per-workspace state the plugin needs to inject after create is the
- * uploaded project and the bootstrap-ready marker — no runtime install, no
- * `opencode serve` command, no stale-process cleanup.
+ * uploaded project, the per-workspace env file, and the bootstrap-ready
+ * marker — no runtime install, no `opencode serve` command, no stale-process
+ * cleanup.
+ *
+ * `Sandbox.create({envs})` is intentionally *not* set here: E2B applies those
+ * only to subsequent `commands.run` invocations, not to the template's init
+ * command. The per-workspace envs OpenCode delivers via `adaptor.create` are
+ * written to a sandbox-local env file in bootstrap.ts, which the baked start
+ * command sources before exec'ing opencode. Setting `envs` here in addition
+ * would just duplicate that delivery for the (currently empty) set of
+ * `commands.run` callers that care about inherited envs.
  */
 export async function createWorkspaceSandbox(
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
-  env: Record<string, string | undefined>,
   compatibility: PersistedWorkspaceCompatibility,
   baseTemplate: BaseTemplateFingerprint,
   runtimeVersion: string,
@@ -87,7 +95,6 @@ export async function createWorkspaceSandbox(
   return Sandbox.create(template, {
     timeoutMs: config.sandboxTimeoutMs,
     metadata: buildSandboxMetadata(info, config, compatibility, baseTemplate),
-    envs: compactEnv(env),
     secure: config.secure,
     network: {
       allowPublicTraffic: config.network.allowPublicTraffic,
@@ -239,13 +246,6 @@ export function readSandboxCompatibility(metadata: Record<string, string>): Sand
     baseTemplateId: metadata[BASE_TEMPLATE_ID_METADATA_KEY],
     baseTemplateBuildId: metadata[BASE_TEMPLATE_BUILD_ID_METADATA_KEY],
   }
-}
-
-/**
- * Drop undefined environment variables before sending them to E2B.
- */
-function compactEnv(env: Record<string, string | undefined>): Record<string, string> {
-  return Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined))
 }
 
 /**

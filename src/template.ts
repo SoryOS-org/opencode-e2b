@@ -15,8 +15,15 @@ import type { BaseTemplateFingerprint, PluginLogger, SandboxMetadataCompatibilit
  *          sandbox spawn time.
  *   - "2": Runtime-baked template (opencode installed at build time, start
  *          command waits for bootstrap marker, then execs the pinned binary).
+ *   - "3": Same as rev 2, but the baked start command also sources a
+ *          per-sandbox env file (`RUNTIME_ENV_FILE`) before exec'ing so the
+ *          workspace-specific envs OpenCode delivers via `adaptor.create`
+ *          (OPENCODE_WORKSPACE_ID, OPENCODE_EXPERIMENTAL_WORKSPACES,
+ *          OPENCODE_AUTH_CONTENT, OTEL_*) actually reach the server. Rev 2
+ *          was effectively running opencode without these, which disabled
+ *          sync entirely on the remote.
  */
-const MANAGED_TEMPLATE_REVISION = "2"
+const MANAGED_TEMPLATE_REVISION = "3"
 
 /**
  * Absolute path inside the sandbox where the plugin writes an empty file to
@@ -44,12 +51,35 @@ const BAKED_BIN_PATH_FILE = "/opt/opencode-e2b/bin-path"
 const START_COMMAND_LOG_PATH = "/tmp/opencode-serve.log"
 
 /**
+ * Absolute path inside the sandbox where the plugin writes a POSIX-sh
+ * compatible env file right before releasing the bootstrap marker. The baked
+ * start command sources this file so workspace-specific envs delivered by
+ * OpenCode via `adaptor.create(config, env)` are visible to `opencode serve`.
+ *
+ * E2B's `Sandbox.create({envs})` only affects subsequent `commands.run`
+ * calls, not the template's init command, so the env file is the only
+ * reliable delivery channel for per-sandbox variables like
+ * `OPENCODE_WORKSPACE_ID` or `OPENCODE_AUTH_CONTENT`. Exported so bootstrap
+ * writes to the same path the start command reads from.
+ */
+export const RUNTIME_ENV_FILE = "/tmp/.opencode-e2b.env"
+
+/**
  * Compatibility flag emitted into sandbox metadata by the current plugin.
  * Sandboxes created before the runtime-baked template design carry
  * `template:managed-idle-start` instead; the mismatch detector below treats
  * that as incompatible so they get replaced on next reuse.
  */
 export const RUNTIME_BAKED_FLAG = "template:runtime-baked"
+
+/**
+ * Compatibility flag emitted alongside `RUNTIME_BAKED_FLAG` starting at rev
+ * 3 to indicate the baked start command sources a per-sandbox env file
+ * before exec'ing opencode. Sandboxes created at rev 2 have the runtime
+ * baked but no env delivery, which silently disables sync on the remote; we
+ * detect their missing flag to force a clean replacement.
+ */
+export const ENV_INJECTED_STARTUP_FLAG = "template:env-injected-startup"
 
 /**
  * Compatibility flag emitted by the previous (idle + spawn-time install)
@@ -269,9 +299,14 @@ async function buildManagedWorkspaceTemplate(
  *      workspace provisioning by creating `BOOTSTRAP_READY_MARKER`. The cap
  *      prevents a zombie wait from keeping the sandbox alive indefinitely if
  *      the plugin crashes mid-provision.
- *   3. Chdir into the uploaded project path so `opencode serve` resolves the
+ *   3. Source the per-sandbox env file the plugin writes before signalling
+ *      the marker. `set -a` / `.` / `set +a` exports every assignment in the
+ *      file so the subsequent `exec` inherits them. The `-f` guard keeps the
+ *      template usable even when the env file is absent (e.g. manual
+ *      sandbox debugging from the same alias).
+ *   4. Chdir into the uploaded project path so `opencode serve` resolves the
  *      workspace root without any extra flags.
- *   4. `exec` the absolute path recorded at build time, replacing this shell
+ *   5. `exec` the absolute path recorded at build time, replacing this shell
  *      so opencode becomes PID 1 and signals sandbox exit if it dies.
  */
 function buildBakedStartCommand(projectPath: string, serverPort: number): string {
@@ -279,6 +314,7 @@ function buildBakedStartCommand(projectPath: string, serverPort: number): string
   return [
     `exec >${START_COMMAND_LOG_PATH} 2>&1`,
     `for _ in $(seq 1 2400); do [ -f ${BOOTSTRAP_READY_MARKER} ] && break; sleep 0.25; done`,
+    `if [ -f ${RUNTIME_ENV_FILE} ]; then set -a; . ${RUNTIME_ENV_FILE}; set +a; fi`,
     `cd ${quotedProjectPath} 2>/dev/null || true`,
     `exec "$(cat ${BAKED_BIN_PATH_FILE})" serve --hostname 0.0.0.0 --port ${serverPort}`,
   ].join(" && ")
@@ -302,6 +338,19 @@ export function describeBaseTemplateMismatch(
   // never have a server listening after attach. Force a replacement.
   if (sandboxCompatibility.flags.includes(LEGACY_IDLE_FLAG) && !sandboxCompatibility.flags.includes(RUNTIME_BAKED_FLAG)) {
     return "sandbox was provisioned under the legacy idle-start plugin design; runtime-baked template is required"
+  }
+
+  // Sandboxes from managed template rev 2 have the pinned opencode baked
+  // in, but their start command does not source the per-sandbox env file
+  // the plugin now writes. Without the envs (most importantly
+  // OPENCODE_EXPERIMENTAL_WORKSPACES), the remote server runs sync-disabled
+  // and the workspace silently fails to propagate session state back to
+  // local. Detect the absence of the rev-3 flag and force a fresh sandbox.
+  if (
+    sandboxCompatibility.flags.includes(RUNTIME_BAKED_FLAG) &&
+    !sandboxCompatibility.flags.includes(ENV_INJECTED_STARTUP_FLAG)
+  ) {
+    return "sandbox was provisioned before per-workspace env delivery was wired into the baked start command"
   }
 
   if (

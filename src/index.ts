@@ -229,7 +229,6 @@ async function createWorkspace(
     const sandbox = await createWorkspaceSandbox(
       info,
       config,
-      env,
       freshCompatibility,
       baseTemplate,
       runtimeVersion,
@@ -260,6 +259,7 @@ async function createWorkspace(
         info,
         config,
         runtimeVersion,
+        env,
         logger,
       })
 

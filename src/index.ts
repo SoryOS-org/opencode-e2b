@@ -25,6 +25,7 @@ import {
   forgetSandboxCompatibility,
   resolveLocalRuntimeVersion,
 } from "./runtime.js"
+import { errorMessage } from "./shared.js"
 import { describeBaseTemplateMismatch, resolveBaseTemplateFingerprint } from "./template.js"
 import type { E2BWorkspacePluginOptions, PluginLogger, RuntimeWorkspaceAdaptor } from "./types.js"
 import { uploadLocalSnapshot } from "./upload.js"
@@ -363,14 +364,6 @@ function createPluginLogger(client: PluginInput["client"]): PluginLogger {
       return write("error", message, extra)
     },
   }
-}
-
-/**
- * Normalize unknown thrown values into a readable message for log metadata.
- */
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return String(error)
 }
 
 /**

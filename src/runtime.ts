@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises"
 import { Sandbox } from "e2b"
 
 import { CURRENT_WORKSPACE_API_VERSION } from "./config.js"
+import { errorMessage } from "./shared.js"
 import type {
   PersistedWorkspaceCompatibility,
   PluginLogger,
@@ -287,10 +288,4 @@ function extractVersion(output: string): string | undefined {
   return match?.[0]
 }
 
-/**
- * Normalize unknown thrown values into a readable message.
- */
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return String(error)
-}
+

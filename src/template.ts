@@ -2,6 +2,7 @@ import { createHash } from "node:crypto"
 
 import { ApiClient, ConnectionConfig, Template, TemplateError } from "e2b"
 
+import { errorMessage } from "./shared.js"
 import type { BaseTemplateFingerprint, PluginLogger, SandboxMetadataCompatibility } from "./types.js"
 
 /**
@@ -557,13 +558,4 @@ function posixDirname(path: string): string {
   return path.slice(0, lastSlash)
 }
 
-/**
- * Normalize unknown thrown values into a readable message for logging.
- */
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
-    return error.message
-  }
-  return String(error)
-}
+

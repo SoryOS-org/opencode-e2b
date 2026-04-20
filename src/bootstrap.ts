@@ -21,10 +21,11 @@ export async function bootstrapWorkspace(params: {
   sandbox: Sandbox
   info: WorkspaceInfo
   config: NormalizedE2BWorkspaceConfig
+  runtimeVersion: string
 }): Promise<void> {
   await ensureGitRepository(params.sandbox, params.info, params.config)
   await writeProjectMarker(params.sandbox, params.info, params.config)
-  await runBootstrapCommands(params.sandbox, params.config)
+  await runBootstrapCommands(params.sandbox, params.config, params.runtimeVersion)
   await waitForServerReady(params.sandbox, params.config)
 }
 
@@ -62,14 +63,19 @@ async function writeProjectMarker(
  * Run the configured bootstrap sequence used to prepare OpenCode inside the
  * sandbox. These remain command-driven to keep the scaffold flexible.
  */
-async function runBootstrapCommands(sandbox: Sandbox, config: NormalizedE2BWorkspaceConfig): Promise<void> {
+async function runBootstrapCommands(
+  sandbox: Sandbox,
+  config: NormalizedE2BWorkspaceConfig,
+  runtimeVersion: string,
+): Promise<void> {
   for (const command of config.bootstrap.prepareCommands) {
     if (!command.trim()) continue
     await runCheckedCommand(sandbox, command, config.projectPath)
   }
 
-  if (config.bootstrap.installCommand.trim()) {
-    await runCheckedCommand(sandbox, config.bootstrap.installCommand, config.projectPath)
+  const installCommand = resolveInstallCommand(config, runtimeVersion)
+  if (installCommand) {
+    await runCheckedCommand(sandbox, installCommand, config.projectPath)
   }
 
   if (!config.bootstrap.startCommand.trim()) {
@@ -88,6 +94,21 @@ async function runBootstrapCommands(sandbox: Sandbox, config: NormalizedE2BWorks
     cwd: config.projectPath,
     background: true,
   })
+}
+
+/**
+ * Keep the sandbox runtime pinned to the same published OpenCode version as the
+ * local controller. The prebuilt E2B `opencode` template may lag behind the
+ * currently installed desktop/CLI release, and older servers are missing the
+ * sync routes required by workspace mode. Users can still override this with an
+ * explicit `bootstrap.installCommand` if they have a custom image strategy.
+ */
+function resolveInstallCommand(config: NormalizedE2BWorkspaceConfig, runtimeVersion: string): string | undefined {
+  if (config.bootstrap.installCommand.trim()) {
+    return config.bootstrap.installCommand
+  }
+
+  return `npm install -g opencode-ai@${runtimeVersion}`
 }
 
 /**

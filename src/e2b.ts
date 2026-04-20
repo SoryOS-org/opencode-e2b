@@ -4,8 +4,8 @@ import { Sandbox } from "e2b"
 import { forgetSandboxCompatibility } from "./runtime.js"
 import type {
   NormalizedE2BWorkspaceConfig,
-  PersistedWorkspaceContract,
-  SandboxMetadataContract,
+  PersistedWorkspaceCompatibility,
+  SandboxMetadataCompatibility,
 } from "./types.js"
 
 const WORKSPACE_ID_METADATA_KEY = "opencodeWorkspaceId"
@@ -36,15 +36,15 @@ type WorkspaceSandboxMatch = {
 export function buildSandboxMetadata(
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
-  contract: PersistedWorkspaceContract,
+  compatibility: PersistedWorkspaceCompatibility,
 ): Record<string, string> {
   return {
     ...config.metadata,
     [WORKSPACE_ID_METADATA_KEY]: info.id,
     [PROJECT_ID_METADATA_KEY]: info.projectID,
-    [WORKSPACE_API_VERSION_METADATA_KEY]: contract.workspaceApiVersion,
-    [RUNTIME_VERSION_METADATA_KEY]: contract.runtimeVersion,
-    [FLAGS_METADATA_KEY]: JSON.stringify(contract.flags),
+    [WORKSPACE_API_VERSION_METADATA_KEY]: compatibility.workspaceApiVersion,
+    [RUNTIME_VERSION_METADATA_KEY]: compatibility.runtimeVersion,
+    [FLAGS_METADATA_KEY]: JSON.stringify(compatibility.flags),
   }
 }
 
@@ -55,11 +55,11 @@ export async function createWorkspaceSandbox(
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
   env: Record<string, string | undefined>,
-  contract: PersistedWorkspaceContract,
+  compatibility: PersistedWorkspaceCompatibility,
 ): Promise<Sandbox> {
   return Sandbox.create(config.template, {
     timeoutMs: config.sandboxTimeoutMs,
-    metadata: buildSandboxMetadata(info, config, contract),
+    metadata: buildSandboxMetadata(info, config, compatibility),
     envs: compactEnv(env),
     secure: config.secure,
     network: {
@@ -103,8 +103,8 @@ export async function findWorkspaceSandboxRecord(
 
 /**
  * List every running or paused sandbox that advertises the workspace metadata
- * contract, so callers can decide whether a missing, single, or duplicate
- * match is acceptable for the current lifecycle operation.
+ * compatibility fields, so callers can decide whether a missing, single, or
+ * duplicate match is acceptable for the current lifecycle operation.
  */
 async function listWorkspaceSandboxMatches(info: WorkspaceInfo): Promise<WorkspaceSandboxMatch[]> {
   const paginator = Sandbox.list({
@@ -199,10 +199,11 @@ export async function removeWorkspaceSandbox(
 }
 
 /**
- * Parse workspace contract fields back out of raw E2B metadata. Invalid or
- * missing values are treated as absent so older sandboxes remain inspectable.
+ * Parse workspace compatibility fields back out of raw E2B metadata. Invalid
+ * or missing values are treated as absent so older sandboxes remain
+ * inspectable.
  */
-export function readSandboxContract(metadata: Record<string, string>): SandboxMetadataContract {
+export function readSandboxCompatibility(metadata: Record<string, string>): SandboxMetadataCompatibility {
   return {
     workspaceApiVersion: metadata[WORKSPACE_API_VERSION_METADATA_KEY],
     runtimeVersion: metadata[RUNTIME_VERSION_METADATA_KEY],

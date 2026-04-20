@@ -3,11 +3,12 @@ import type { WorkspaceInfo } from "@opencode-ai/plugin"
 import type {
   E2BWorkspacePluginOptions,
   NormalizedE2BWorkspaceConfig,
-  PersistedWorkspaceContract,
+  PersistedWorkspaceCompatibility,
   PersistedWorkspaceExtra,
 } from "./types.js"
 
 export const CURRENT_WORKSPACE_API_VERSION = "1"
+const DEFAULT_TEMPLATE = "opencode"
 
 const DEFAULT_IGNORE = [
   ".git",
@@ -33,7 +34,7 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
 
   const config = {
     workspaceApiVersion: CURRENT_WORKSPACE_API_VERSION,
-    template: options?.template ?? "base",
+    template: options?.template ?? DEFAULT_TEMPLATE,
     sandboxTimeoutMs,
     projectPath: options?.projectPath ?? "/home/user/project",
     serverPort,
@@ -102,10 +103,12 @@ export function resolveWorkspaceConfig(
   const extra = readPersistedExtra(info)
   if (!extra) return normalized
 
+  const template = resolvePersistedTemplate(extra.e2b.template, options)
+
   return {
     ...normalized,
     workspaceApiVersion: extra.e2b.workspaceApiVersion,
-    template: extra.e2b.template,
+    template,
     projectPath: extra.e2b.projectPath,
     serverPort: extra.e2b.serverPort,
     secure: extra.e2b.secure,
@@ -118,18 +121,35 @@ export function resolveWorkspaceConfig(
 }
 
 /**
- * Resolve the persisted workspace contract used for sandbox metadata and
- * compatibility checks. When older workspace rows are missing the contract, the
- * current runtime values are used as a best-effort fallback.
+ * Older plugin builds defaulted to E2B's generic `base` template, which does
+ * not include the `opencode` CLI and causes bootstrap to fail with
+ * `opencode: not found`. When we encounter that legacy persisted default and
+ * the user has not explicitly asked for a template, upgrade it in place to the
+ * current `opencode` default so retries do not keep recreating broken
+ * sandboxes.
  */
-export function resolveWorkspaceContract(
+function resolvePersistedTemplate(
+  persistedTemplate: string,
+  options?: E2BWorkspacePluginOptions,
+): string {
+  if (options?.template) return options.template
+  if (persistedTemplate === "base") return DEFAULT_TEMPLATE
+  return persistedTemplate
+}
+
+/**
+ * Resolve the persisted workspace compatibility data used for sandbox metadata
+ * and compatibility checks. When older workspace rows are missing these
+ * values, the current runtime values are used as a best-effort fallback.
+ */
+export function resolveWorkspaceCompatibility(
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
   runtimeVersion: string,
-): PersistedWorkspaceContract {
+): PersistedWorkspaceCompatibility {
   const extra = readPersistedExtra(info)
   if (!extra) {
-    return buildFreshContract(config, runtimeVersion)
+    return buildFreshCompatibility(config, runtimeVersion)
   }
 
   return {
@@ -140,16 +160,16 @@ export function resolveWorkspaceContract(
 }
 
 /**
- * Build a contract that reflects the current plugin + controller state,
- * ignoring whatever was previously persisted. Use this whenever a sandbox is
- * provisioned fresh (first create, or replacement after an incompatible one
- * was killed) so its metadata matches the code that just wrote it, not a
- * prior generation that no longer exists.
+ * Build compatibility data that reflects the current plugin + controller
+ * state, ignoring whatever was previously persisted. Use this whenever a
+ * sandbox is provisioned fresh (first create, or replacement after an
+ * incompatible one was killed) so its metadata matches the code that just
+ * wrote it, not a prior generation that no longer exists.
  */
-export function buildFreshContract(
+export function buildFreshCompatibility(
   config: NormalizedE2BWorkspaceConfig,
   runtimeVersion: string,
-): PersistedWorkspaceContract {
+): PersistedWorkspaceCompatibility {
   return {
     workspaceApiVersion: config.workspaceApiVersion,
     runtimeVersion,

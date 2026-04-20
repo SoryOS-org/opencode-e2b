@@ -2,11 +2,11 @@ import type { Plugin, PluginInput, WorkspaceInfo } from "@opencode-ai/plugin"
 
 import { bootstrapWorkspace } from "./bootstrap.js"
 import {
-  buildFreshContract,
+  buildFreshCompatibility,
   buildPersistedExtra,
   defaultWorkspaceName,
   normalizeOptions,
-  resolveWorkspaceContract,
+  resolveWorkspaceCompatibility,
   resolveWorkspaceConfig,
   validatePluginOptions,
 } from "./config.js"
@@ -14,7 +14,7 @@ import {
   createWorkspaceSandbox,
   findWorkspaceSandboxRecord,
   removeWorkspaceSandbox,
-  readSandboxContract,
+  readSandboxCompatibility,
   requireWorkspaceSandboxRecord,
   sandboxBaseUrl,
   sandboxTargetHeaders,
@@ -67,7 +67,7 @@ export const E2BWorkspacePlugin: Plugin = async (
     async target(info) {
       const localRuntimeVersion = await getLocalRuntimeVersion()
       const config = resolveWorkspaceConfig(info, options)
-      const contract = resolveWorkspaceContract(info, config, localRuntimeVersion)
+      const compatibility = resolveWorkspaceCompatibility(info, config, localRuntimeVersion)
       const record = await requireWorkspaceSandboxRecord(info, config)
       const baseUrl = sandboxBaseUrl(record.sandbox, config)
       const headers = sandboxTargetHeaders(record.sandbox, config)
@@ -75,8 +75,8 @@ export const E2BWorkspacePlugin: Plugin = async (
       await assertWorkspaceCompatibility({
         workspaceID: info.id,
         localRuntimeVersion,
-        persistedContract: contract,
-        sandboxContract: readSandboxContract(record.metadata),
+        persistedCompatibility: compatibility,
+        sandboxCompatibility: readSandboxCompatibility(record.metadata),
         sandbox: record.sandbox,
         baseUrl,
         projectPath: config.projectPath,
@@ -158,8 +158,8 @@ async function createWorkspace(
       runtimeVersion,
     })
 
-    stage = "resolve-contract"
-    const contract = resolveWorkspaceContract(info, config, runtimeVersion)
+    stage = "resolve-compatibility"
+    const compatibility = resolveWorkspaceCompatibility(info, config, runtimeVersion)
 
     stage = "find-existing-sandbox"
     const existingRecord = await findWorkspaceSandboxRecord(info, config)
@@ -174,8 +174,8 @@ async function createWorkspace(
         await assertWorkspaceCompatibility({
           workspaceID: info.id,
           localRuntimeVersion: runtimeVersion,
-          persistedContract: contract,
-          sandboxContract: readSandboxContract(existingRecord.metadata),
+          persistedCompatibility: compatibility,
+          sandboxCompatibility: readSandboxCompatibility(existingRecord.metadata),
           sandbox: existingRecord.sandbox,
           baseUrl: sandboxBaseUrl(existingRecord.sandbox, config),
           projectPath: config.projectPath,
@@ -205,12 +205,13 @@ async function createWorkspace(
     await logger?.info("create workspace provisioning sandbox", {
       workspaceID: info.id,
     })
-    // A brand-new sandbox must be tagged with the current runtime's contract,
-    // not the prior (potentially killed) sandbox's contract that lives in
-    // `extra`. Using `contract` here would stamp the new metadata with a
+    // A brand-new sandbox must be tagged with the current runtime's
+    // compatibility data, not the prior (potentially killed) sandbox's
+    // compatibility data that lives in `extra`. Using `compatibility` here
+    // would stamp the new metadata with a
     // stale runtime version / flag set and defeat the compat check.
-    const freshContract = buildFreshContract(config, runtimeVersion)
-    const sandbox = await createWorkspaceSandbox(info, config, env, freshContract)
+    const freshCompatibility = buildFreshCompatibility(config, runtimeVersion)
+    const sandbox = await createWorkspaceSandbox(info, config, env, freshCompatibility)
 
     try {
       stage = "upload-snapshot"
@@ -235,6 +236,7 @@ async function createWorkspace(
         sandbox,
         info,
         config,
+        runtimeVersion,
       })
 
       await logger?.info("create workspace complete", {

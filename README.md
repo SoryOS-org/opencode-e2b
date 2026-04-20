@@ -26,7 +26,7 @@ This repository contains a small TypeScript plugin package for OpenCode's experi
 
 OpenCode persists the result of `configure()` before it calls `create()`. That means the adaptor cannot create an E2B sandbox and then save the generated `sandboxId` into the workspace row afterward.
 
-The current workaround is metadata-based discovery plus a small persisted workspace contract. The plugin stores the contract in both `WorkspaceInfo.extra` and E2B sandbox metadata:
+The current workaround is metadata-based discovery plus a small persisted workspace compatibility record. The plugin stores that compatibility data in both `WorkspaceInfo.extra` and E2B sandbox metadata:
 
 - `opencodeWorkspaceId`
 - `opencodeProjectId`
@@ -51,7 +51,7 @@ Missing flags should be treated as `unknown`, not `false`, so older sandboxes ca
 - The local OpenCode runtime version is resolved from `GET /global/health` on the local OpenCode server.
 - The remote sandbox version is probed from `GET /global/health` on the remote OpenCode server, with `opencode --version` as a fallback.
 - The plugin refuses to attach to a sandbox when:
-  - `opencodeWorkspaceApiVersion` does not match the current workspace contract version
+  - `opencodeWorkspaceApiVersion` does not match the current workspace compatibility version
   - the probed remote OpenCode version does not match the local OpenCode version
 
 That keeps the first version conservative: it detects mismatches clearly before we add in-place upgrade or migration flows.
@@ -78,11 +78,10 @@ npm run build
   "plugin": [
     [
       "/absolute/path/to/opencode-e2b/dist/index.js",
-      {
-        "template": "base",
+       {
+        "template": "opencode",
         "sandboxTimeoutMs": 3600000,
         "bootstrap": {
-          "installCommand": "npm install -g opencode-ai",
           "startCommand": "opencode serve --hostname 0.0.0.0 --port 4096"
         }
       }
@@ -99,8 +98,9 @@ OPENCODE_EXPERIMENTAL_WORKSPACES=true opencode
 
 ## Notes on defaults
 
+- The scaffold defaults to the prebuilt E2B `opencode` template so the `opencode` CLI is already present in the sandbox.
 - The scaffold defaults to public sandbox traffic for the remote workspace URL.
-- The bootstrap commands are configurable because the right installation path may differ by E2B template.
+- The bootstrap commands remain configurable if you want to build on a different template or customize the startup flow.
 - The uploader intentionally uses a simple recursive snapshot model today. It excludes common heavy directories but is designed to be replaced with git-aware or tar-stream uploads later.
 
 ## Extension points

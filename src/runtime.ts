@@ -1,17 +1,14 @@
 import { readFile } from "node:fs/promises"
-import { createRequire } from "node:module"
-import path from "node:path"
 import { Sandbox } from "e2b"
 
 import { CURRENT_WORKSPACE_API_VERSION } from "./config.js"
 import type {
-  PersistedWorkspaceContract,
+  PersistedWorkspaceCompatibility,
   PluginLogger,
-  SandboxMetadataContract,
+  SandboxMetadataCompatibility,
 } from "./types.js"
 
 const HEALTH_TIMEOUT_MS = 1_500
-const require = createRequire(import.meta.url)
 let installedRuntimeVersionPromise: Promise<string> | undefined
 
 /**
@@ -83,19 +80,21 @@ export async function probeRemoteRuntimeVersion(params: {
 
 /**
  * Fail fast when the current plugin cannot safely interpret or reuse a sandbox
- * created under a different workspace contract or OpenCode runtime version.
+ * created under a different workspace compatibility model or OpenCode runtime
+ * version.
  */
 export async function assertWorkspaceCompatibility(params: {
   workspaceID: string
   localRuntimeVersion: string
-  persistedContract: PersistedWorkspaceContract
-  sandboxContract: SandboxMetadataContract
+  persistedCompatibility: PersistedWorkspaceCompatibility
+  sandboxCompatibility: SandboxMetadataCompatibility
   sandbox: Sandbox
   baseUrl: URL
   projectPath: string
   headers?: Record<string, string>
 }): Promise<void> {
-  const declaredApiVersion = params.sandboxContract.workspaceApiVersion ?? params.persistedContract.workspaceApiVersion
+  const declaredApiVersion =
+    params.sandboxCompatibility.workspaceApiVersion ?? params.persistedCompatibility.workspaceApiVersion
   if (declaredApiVersion !== CURRENT_WORKSPACE_API_VERSION) {
     throw new Error(
       `Workspace ${params.workspaceID} uses workspace API ${declaredApiVersion}, but this plugin expects ${CURRENT_WORKSPACE_API_VERSION}`,
@@ -125,8 +124,10 @@ export async function assertWorkspaceCompatibility(params: {
     return
   }
 
-  const declaredRuntimeVersion = params.sandboxContract.runtimeVersion ?? params.persistedContract.runtimeVersion
-  const declaredFlags = params.sandboxContract.flags.length ? params.sandboxContract.flags : params.persistedContract.flags
+  const declaredRuntimeVersion =
+    params.sandboxCompatibility.runtimeVersion ?? params.persistedCompatibility.runtimeVersion
+  const declaredFlags =
+    params.sandboxCompatibility.flags.length ? params.sandboxCompatibility.flags : params.persistedCompatibility.flags
   const declaredRuntimeClause = declaredRuntimeVersion
     ? ` Sandbox metadata recorded ${declaredRuntimeVersion}.`
     : ""
@@ -213,28 +214,41 @@ async function resolveInstalledRuntimeVersion(logger?: PluginLogger): Promise<st
 }
 
 /**
- * Read the installed `@opencode-ai/plugin` package.json that loaded this
- * plugin and return its version field.
+ * Read this plugin package's declared OpenCode plugin dependency and treat it
+ * as the local controller runtime version. OpenCode publishes the runtime and
+ * plugin packages in lockstep, and local managed plugins are loaded directly
+ * from the repo root, so `../package.json` is stable even when node_modules are
+ * not available from the generated `dist/` entrypoint.
  */
 async function readInstalledRuntimeVersion(logger?: PluginLogger): Promise<string> {
-  const pluginEntryPath = require.resolve("@opencode-ai/plugin")
-  const packageJsonPath = path.join(path.dirname(pluginEntryPath), "..", "package.json")
+  const packageJsonPath = new URL("../package.json", import.meta.url)
 
   await logger?.info("installed runtime version lookup start", {
-    packageJsonPath,
+    packageJsonPath: packageJsonPath.toString(),
   })
 
-  const payload = JSON.parse(await readFile(packageJsonPath, "utf8")) as Partial<{ version: unknown }>
-  if (typeof payload.version !== "string" || !payload.version) {
-    throw new Error(`Missing version in ${packageJsonPath}`)
+  const payload = JSON.parse(await readFile(packageJsonPath, "utf8")) as Partial<{
+    dependencies: Record<string, unknown>
+    devDependencies: Record<string, unknown>
+    peerDependencies: Record<string, unknown>
+  }>
+  const declaredVersion =
+    payload.dependencies?.["@opencode-ai/plugin"] ??
+    payload.devDependencies?.["@opencode-ai/plugin"] ??
+    payload.peerDependencies?.["@opencode-ai/plugin"]
+  const version = typeof declaredVersion === "string" ? extractVersion(declaredVersion) : undefined
+
+  if (!version) {
+    throw new Error(`Missing @opencode-ai/plugin version in ${packageJsonPath}`)
   }
 
   await logger?.info("installed runtime version lookup success", {
-    packageJsonPath,
-    version: payload.version,
+    packageJsonPath: packageJsonPath.toString(),
+    declaredVersion,
+    version,
   })
 
-  return payload.version
+  return version
 }
 
 /**

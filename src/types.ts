@@ -74,11 +74,11 @@ export type NormalizedE2BWorkspaceConfig = {
 }
 
 /**
- * Stable workspace contract details that are persisted both in OpenCode's
- * workspace row and in E2B sandbox metadata. These fields are intentionally
- * provider-neutral enough to survive future implementation changes.
+ * Stable workspace compatibility details persisted both in OpenCode's
+ * workspace row and in E2B sandbox metadata. These fields describe the local
+ * and remote runtime compatibility expectations for a workspace instance.
  */
-export type PersistedWorkspaceContract = {
+export type PersistedWorkspaceCompatibility = {
   workspaceApiVersion: string
   runtimeVersion: string
   flags: string[]
@@ -134,11 +134,11 @@ export type PluginLogger = {
 }
 
 /**
- * Parsed view of the workspace-contract fields stored in E2B sandbox
+ * Parsed view of the workspace-compatibility fields stored in E2B sandbox
  * metadata. Fields are optional because older sandboxes may predate some
  * keys, and an unknown flag set should never be confused with an empty set.
  */
-export type SandboxMetadataContract = {
+export type SandboxMetadataCompatibility = {
   workspaceApiVersion?: string
   runtimeVersion?: string
   flags: string[]

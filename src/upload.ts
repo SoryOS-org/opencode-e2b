@@ -6,10 +6,15 @@ import { Sandbox } from "e2b"
 
 import type { E2BUploadOptions } from "./types.js"
 
-type SnapshotFile = {
-  localPath: string
+/**
+ * A single uploadable file represented only by its filesystem coordinates.
+ * Contents are not held here — they are read lazily, one batch at a time, so
+ * the peak memory cost of an upload is `batchSize * average file size` rather
+ * than the full project snapshot.
+ */
+type SnapshotPath = {
+  absolutePath: string
   relativePath: string
-  data: Buffer
 }
 
 /**
@@ -23,8 +28,11 @@ type WalkState = {
 
 /**
  * Copy the local workspace snapshot into the sandbox project directory.
- * This implementation is intentionally simple and recursive so it is easy to
- * replace later with git-aware or archive-based upload strategies.
+ *
+ * The upload runs in rolling batches: at any given time we hold file contents
+ * for at most one batch, hand them to the E2B filesystem API, then let them
+ * go before reading the next batch. This keeps the plugin usable for larger
+ * projects without needing a git-aware or archive-based uploader.
  */
 export async function uploadLocalSnapshot(params: {
   sandbox: Sandbox
@@ -32,49 +40,45 @@ export async function uploadLocalSnapshot(params: {
   remoteRoot: string
   upload: Required<E2BUploadOptions>
 }): Promise<void> {
-  const files = await collectSnapshotFiles(params.localRoot, params.upload)
-  await ensureRemoteDirectories(params.sandbox, params.remoteRoot, files)
+  const paths = await collectSnapshotPaths(params.localRoot, params.upload)
+  await ensureRemoteDirectories(params.sandbox, params.remoteRoot, paths)
 
-  for (const batch of chunk(files, params.upload.batchSize)) {
-    await params.sandbox.files.write(
-      batch.map((file) => ({
-        path: toRemotePath(params.remoteRoot, file.relativePath),
-        data: toArrayBuffer(file.data),
+  for (const batch of chunk(paths, params.upload.batchSize)) {
+    const entries = await Promise.all(
+      batch.map(async (entry) => ({
+        path: toRemotePath(params.remoteRoot, entry.relativePath),
+        data: await readFileAsArrayBuffer(entry.absolutePath),
       })),
     )
+    await params.sandbox.files.write(entries)
   }
 }
 
 /**
- * Recursively collect uploadable files from the local project directory.
+ * Recursively collect uploadable file paths from the local project directory.
+ * Deliberately cheap — does not read any file contents.
  */
-async function collectSnapshotFiles(localRoot: string, upload: Required<E2BUploadOptions>): Promise<SnapshotFile[]> {
-  const entries = await walkDirectory(localRoot, localRoot, upload, {
+async function collectSnapshotPaths(
+  localRoot: string,
+  upload: Required<E2BUploadOptions>,
+): Promise<SnapshotPath[]> {
+  return walkDirectory(localRoot, localRoot, upload, {
     rootRealPath: await realpath(localRoot),
     visitedDirectories: new Set<string>(),
   })
-  const files: SnapshotFile[] = []
-
-  for (const entry of entries) {
-    files.push({
-      localPath: entry,
-      relativePath: normalizeRelativePath(path.relative(localRoot, entry)),
-      data: await readFile(entry),
-    })
-  }
-
-  return files
 }
 
 /**
- * Walk a directory tree and return local file paths that should be uploaded.
+ * Walk a directory tree and return the relative/absolute paths that should be
+ * uploaded. Skips configured ignore patterns, directory cycles, and out-of-root
+ * symlinks.
  */
 async function walkDirectory(
   currentPath: string,
   localRoot: string,
   upload: Required<E2BUploadOptions>,
   state: WalkState,
-): Promise<string[]> {
+): Promise<SnapshotPath[]> {
   const currentRealPath = await realpath(currentPath)
   assertWithinRoot(state.rootRealPath, currentRealPath, currentPath)
   if (state.visitedDirectories.has(currentRealPath)) {
@@ -83,7 +87,7 @@ async function walkDirectory(
   state.visitedDirectories.add(currentRealPath)
 
   const discovered = await readdir(currentPath, { withFileTypes: true })
-  const files: string[] = []
+  const files: SnapshotPath[] = []
 
   for (const entry of discovered) {
     const absolutePath = path.join(currentPath, entry.name)
@@ -105,7 +109,7 @@ async function walkDirectory(
     }
 
     if (entryStat.isFile()) {
-      files.push(absolutePath)
+      files.push({ absolutePath, relativePath })
     }
   }
 
@@ -116,11 +120,15 @@ async function walkDirectory(
  * Create remote directories before bulk file writes so nested paths work across
  * templates consistently.
  */
-async function ensureRemoteDirectories(sandbox: Sandbox, remoteRoot: string, files: SnapshotFile[]): Promise<void> {
+async function ensureRemoteDirectories(
+  sandbox: Sandbox,
+  remoteRoot: string,
+  paths: SnapshotPath[],
+): Promise<void> {
   const directories = new Set<string>([remoteRoot])
 
-  for (const file of files) {
-    const relativeDirectory = posix.dirname(file.relativePath)
+  for (const entry of paths) {
+    const relativeDirectory = posix.dirname(entry.relativePath)
     if (relativeDirectory !== ".") {
       directories.add(toRemotePath(remoteRoot, relativeDirectory))
     }
@@ -191,10 +199,15 @@ function shellQuote(value: string): string {
 }
 
 /**
- * Convert a Node buffer into a plain `ArrayBuffer` for the E2B SDK.
+ * Read a file into a standalone ArrayBuffer suitable for the E2B SDK.
+ *
+ * Node Buffers are backed by a shared pool, so `buffer.buffer` may expose
+ * unrelated bytes if handed directly to a consumer that expects a tight
+ * ArrayBuffer. Slicing the underlying buffer by the exact byte range gives
+ * us a fresh, owned ArrayBuffer without the allocation + copy that the
+ * previous `new Uint8Array(len); .set(buffer)` pattern performed.
  */
-function toArrayBuffer(buffer: Buffer): ArrayBuffer {
-  const copy = new Uint8Array(buffer.byteLength)
-  copy.set(buffer)
-  return copy.buffer
+async function readFileAsArrayBuffer(absolutePath: string): Promise<ArrayBuffer> {
+  const buffer = await readFile(absolutePath)
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer
 }

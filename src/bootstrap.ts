@@ -109,13 +109,9 @@ async function clearStaleOpencodeProcesses(
   sandbox: Sandbox,
   config: NormalizedE2BWorkspaceConfig,
 ): Promise<void> {
-  const result = await sandbox.commands.run("pkill -f '(^|/)opencode( |$)'", {
+  await sandbox.commands.run("sh -c \"pkill -f '(^|/)opencode( |$)' || true\"", {
     cwd: config.projectPath,
   })
-
-  if (result.exitCode === 0 || result.exitCode === 1) {
-    return
-  }
 }
 
 /**

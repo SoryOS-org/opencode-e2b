@@ -49,7 +49,7 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
       installCommand: options?.bootstrap?.installCommand ?? "",
       startCommand:
         options?.bootstrap?.startCommand ?? "opencode serve --hostname 0.0.0.0 --port ${PORT}",
-      waitForPath: options?.bootstrap?.waitForPath ?? "/global/event",
+      waitForPath: options?.bootstrap?.waitForPath ?? "/global/health",
       waitForTimeoutMs,
     },
     upload: {

@@ -77,8 +77,11 @@ async function runBootstrapCommands(sandbox: Sandbox, config: NormalizedE2BWorks
 
 /**
  * Wait until the OpenCode server becomes reachable through the sandbox host.
- * The default readiness path is `/global/event`, which should respond as soon
- * as the server accepts the SSE connection.
+ * The default readiness path is `/global/health`, which returns a small JSON
+ * payload as soon as the server is accepting requests. We also defensively
+ * cancel the response body on every iteration — a user-overridden path might
+ * point at an SSE endpoint, and leaving the body open would leak one
+ * persistent connection per poll cycle against the sandbox gateway.
  */
 async function waitForServerReady(sandbox: Sandbox, config: NormalizedE2BWorkspaceConfig): Promise<void> {
   const baseUrl = sandboxBaseUrl(sandbox, config)
@@ -87,17 +90,26 @@ async function waitForServerReady(sandbox: Sandbox, config: NormalizedE2BWorkspa
   const startedAt = Date.now()
 
   while (Date.now() - startedAt < config.bootstrap.waitForTimeoutMs) {
+    let response: Response | undefined
+    let ready = false
     try {
-      const response = await fetch(readyUrl, {
+      response = await fetch(readyUrl, {
         headers,
         signal: AbortSignal.timeout(1_500),
       })
-      if (response.ok) {
-        return
-      }
+      ready = response.ok
     } catch {
       // Ignore transient startup errors until the timeout expires.
+    } finally {
+      // Always release the underlying socket for this probe iteration. We
+      // never read the body because `response.ok` is populated from headers
+      // alone, and a streaming endpoint would otherwise stay open.
+      if (response && !response.bodyUsed) {
+        await response.body?.cancel().catch(() => {})
+      }
     }
+
+    if (ready) return
 
     await sleep(750)
   }

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto"
 
 import { ApiClient, ConnectionConfig, Template, TemplateError } from "e2b"
 
-import { errorMessage } from "./shared.js"
+import { errorMessage, shellSingleQuote } from "./shared.js"
 import type { BaseTemplateFingerprint, PluginLogger, SandboxMetadataCompatibility } from "./types.js"
 
 /**
@@ -311,7 +311,7 @@ async function buildManagedWorkspaceTemplate(
  *      so opencode becomes PID 1 and signals sandbox exit if it dies.
  */
 function buildBakedStartCommand(projectPath: string, serverPort: number): string {
-  const quotedProjectPath = shellQuote(projectPath)
+  const quotedProjectPath = shellSingleQuote(projectPath)
   return [
     `exec >${START_COMMAND_LOG_PATH} 2>&1`,
     `for _ in $(seq 1 2400); do [ -f ${BOOTSTRAP_READY_MARKER} ] && break; sleep 0.25; done`,
@@ -536,15 +536,6 @@ function normalizeAliasSegment(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-}
-
-/**
- * Single-quote a value for safe embedding in a /bin/sh command. Unlike
- * importing `node:path/posix`, this helper is dependency-free and only
- * supports the narrow escaping rule we need for POSIX paths.
- */
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`
 }
 
 /**

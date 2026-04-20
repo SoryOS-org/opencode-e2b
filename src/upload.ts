@@ -4,6 +4,7 @@ import { posix } from "node:path"
 
 import { Sandbox } from "e2b"
 
+import { shellSingleQuote } from "./shared.js"
 import type { E2BUploadOptions } from "./types.js"
 
 /**
@@ -135,7 +136,7 @@ async function ensureRemoteDirectories(
   }
 
   for (const batch of chunk([...directories].sort(), 50)) {
-    await sandbox.commands.run(`mkdir -p ${batch.map(shellQuote).join(" ")}`)
+    await sandbox.commands.run(`mkdir -p ${batch.map(shellSingleQuote).join(" ")}`)
   }
 }
 
@@ -189,13 +190,6 @@ function chunk<T>(items: T[], size: number): T[][] {
     result.push(items.slice(index, index + size))
   }
   return result
-}
-
-/**
- * Quote a shell path for remote command execution.
- */
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`
 }
 
 /**

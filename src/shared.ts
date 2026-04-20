@@ -16,3 +16,13 @@ export function errorMessage(error: unknown): string {
   }
   return String(error)
 }
+
+/**
+ * Single-quote a value for safe embedding in a POSIX-sh command or env file.
+ * Every embedded single quote is escaped as `'\''` so the resulting string
+ * round-trips any payload — including JSON blobs with quotes and newlines —
+ * without letting the shell reinterpret the content.
+ */
+export function shellSingleQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`
+}

@@ -5,6 +5,7 @@ import { Sandbox } from "e2b"
 
 import type { NormalizedE2BWorkspaceConfig, PluginLogger } from "./types.js"
 import { sandboxBaseUrl, sandboxTargetHeaders } from "./e2b.js"
+import { shellSingleQuote } from "./shared.js"
 import { BOOTSTRAP_READY_MARKER, RUNTIME_ENV_FILE } from "./template.js"
 
 /**
@@ -78,9 +79,9 @@ async function ensureGitRepository(
 ): Promise<void> {
   const branch = info.branch ?? "main"
   const command = [
-    `mkdir -p ${shellQuote(config.projectPath)}`,
-    `cd ${shellQuote(config.projectPath)}`,
-    `if [ ! -d .git ]; then git init -b ${shellQuote(branch)}; fi`,
+    `mkdir -p ${shellSingleQuote(config.projectPath)}`,
+    `cd ${shellSingleQuote(config.projectPath)}`,
+    `if [ ! -d .git ]; then git init -b ${shellSingleQuote(branch)}; fi`,
   ].join(" && ")
 
   await runCheckedCommand(sandbox, command)
@@ -254,19 +255,4 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-/**
- * Quote a shell path for remote command execution.
- */
-function shellQuote(value: string): string {
-  return shellSingleQuote(value)
-}
 
-/**
- * Single-quote a value for safe embedding in a POSIX-sh command or env file.
- * Every embedded single quote is escaped as `'\''` so the resulting string
- * round-trips any payload, including JSON blobs and newlines, without
- * letting the shell reinterpret the content.
- */
-function shellSingleQuote(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`
-}

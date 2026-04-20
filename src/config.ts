@@ -5,6 +5,7 @@ import type {
   NormalizedE2BWorkspaceConfig,
   PersistedWorkspaceCompatibility,
   PersistedWorkspaceExtra,
+  PluginLogger,
 } from "./types.js"
 
 export const CURRENT_WORKSPACE_API_VERSION = "1"
@@ -47,9 +48,15 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
     },
     bootstrap: {
       prepareCommands: options?.bootstrap?.prepareCommands ?? [],
+      // Deprecated: the pinned controller is now installed at managed
+      // template build time. This field is still validated so older
+      // configs continue to load, but its value is ignored at runtime.
       installCommand: options?.bootstrap?.installCommand ?? "",
-      startCommand:
-        options?.bootstrap?.startCommand ?? "${OPENCODE_BIN} serve --hostname 0.0.0.0 --port ${PORT}",
+      // Deprecated: the managed template bakes its own start command that
+      // waits for the bootstrap-ready marker and then exec's the installed
+      // opencode by absolute path. This field is still validated so older
+      // configs continue to load, but its value is ignored at runtime.
+      startCommand: options?.bootstrap?.startCommand ?? "",
       waitForPath: options?.bootstrap?.waitForPath ?? "/global/health",
       waitForTimeoutMs,
     },
@@ -66,6 +73,43 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
   return {
     ...config,
     flags: buildWorkspaceFlags(config),
+  }
+}
+
+/**
+ * Emit a one-time deprecation warning for any `bootstrap` options the user
+ * has set that no longer affect runtime behavior. Called from plugin load so
+ * the warning surfaces once per process (not per workspace create).
+ *
+ * The managed template now installs the pinned opencode controller at build
+ * time and launches it via a marker-gated start command. Legacy options
+ * remain schema-valid so old config files keep loading, but carrying their
+ * values silently would be misleading — users who set them expect them to
+ * run.
+ */
+export async function warnDeprecatedBootstrapOptions(
+  options: E2BWorkspacePluginOptions | undefined,
+  logger: PluginLogger | undefined,
+): Promise<void> {
+  const installCommand = options?.bootstrap?.installCommand?.trim()
+  const startCommand = options?.bootstrap?.startCommand?.trim()
+
+  if (installCommand) {
+    await logger?.warn(
+      "bootstrap.installCommand is deprecated and ignored; the pinned opencode runtime is installed at managed-template build time",
+      {
+        installCommand,
+      },
+    )
+  }
+
+  if (startCommand) {
+    await logger?.warn(
+      "bootstrap.startCommand is deprecated and ignored; the managed template bakes a marker-gated start command that execs the installed opencode",
+      {
+        startCommand,
+      },
+    )
   }
 }
 
@@ -217,7 +261,10 @@ function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">
   const flags = new Set<string>([
     "sync:local-snapshot-upload",
     "repo:git-init",
-    "template:managed-idle-start",
+    // Runtime is baked into the managed template at build time; sandboxes
+    // spawn with the pinned opencode already installed and start via a
+    // marker-gated exec in the template's init command. See src/template.ts.
+    "template:runtime-baked",
     "template:upstream-build-tracked",
   ])
 
@@ -225,18 +272,10 @@ function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">
     flags.add("bootstrap:prepare-commands")
   }
 
-  if (config.bootstrap.installCommand.trim()) {
-    flags.add("install:runtime-bootstrap")
-  }
-
-  if (/\bopencode\b/.test(config.bootstrap.startCommand) || /\$\{OPENCODE_BIN\}/.test(config.bootstrap.startCommand)) {
-    flags.add("bootstrap:clear-stale-opencode")
-    flags.add("serve:opencode-cli")
-  }
-
-  if (/\$\{OPENCODE_BIN\}/.test(config.bootstrap.startCommand)) {
-    flags.add("serve:resolved-opencode-bin")
-  }
+  // `bootstrap.installCommand` and `bootstrap.startCommand` are deprecated
+  // under the runtime-baked template design; they are accepted for config
+  // back-compat but no longer drive any runtime behavior. Intentionally no
+  // flag is emitted for them.
 
   return [...flags]
 }
@@ -346,7 +385,7 @@ export function validatePluginOptions(raw: unknown): E2BWorkspacePluginOptions |
       const boot = bootstrap as Record<string, unknown>
       requireStringArray(boot.prepareCommands, "bootstrap.prepareCommands")
       requireString(boot.installCommand, "bootstrap.installCommand", true)
-      requireString(boot.startCommand, "bootstrap.startCommand", false)
+      requireString(boot.startCommand, "bootstrap.startCommand", true)
       requireString(boot.waitForPath, "bootstrap.waitForPath", false)
       requirePositiveIntegerField(boot.waitForTimeoutMs, "bootstrap.waitForTimeoutMs")
     }

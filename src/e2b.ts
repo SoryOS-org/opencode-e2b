@@ -59,7 +59,11 @@ export function buildSandboxMetadata(
 }
 
 /**
- * Create an E2B sandbox for the requested workspace.
+ * Create an E2B sandbox for the requested workspace. The sandbox spawns from
+ * a managed derived template that bakes in the pinned OpenCode runtime, so
+ * the only per-workspace state the plugin needs to inject after create is the
+ * uploaded project and the bootstrap-ready marker — no runtime install, no
+ * `opencode serve` command, no stale-process cleanup.
  */
 export async function createWorkspaceSandbox(
   info: WorkspaceInfo,
@@ -67,9 +71,18 @@ export async function createWorkspaceSandbox(
   env: Record<string, string | undefined>,
   compatibility: PersistedWorkspaceCompatibility,
   baseTemplate: BaseTemplateFingerprint,
+  runtimeVersion: string,
   logger?: PluginLogger,
 ): Promise<Sandbox> {
-  const template = await ensureManagedWorkspaceTemplate(baseTemplate, logger)
+  const template = await ensureManagedWorkspaceTemplate(
+    {
+      baseTemplate,
+      runtimeVersion,
+      projectPath: config.projectPath,
+      serverPort: config.serverPort,
+    },
+    logger,
+  )
 
   return Sandbox.create(template, {
     timeoutMs: config.sandboxTimeoutMs,

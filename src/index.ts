@@ -9,6 +9,7 @@ import {
   resolveWorkspaceCompatibility,
   resolveWorkspaceConfig,
   validatePluginOptions,
+  warnDeprecatedBootstrapOptions,
 } from "./config.js"
 import {
   createWorkspaceSandbox,
@@ -51,6 +52,10 @@ export const E2BWorkspacePlugin: Plugin = async (
     directory,
     serverUrl: serverUrl.toString(),
   })
+  // Surface any legacy bootstrap.* options the user still has configured
+  // once at load time, so they don't get silently ignored workspace after
+  // workspace under the runtime-baked template design.
+  await warnDeprecatedBootstrapOptions(options, logger)
 
   const adaptor: RuntimeWorkspaceAdaptor = {
     name: "E2B Sandbox",
@@ -221,7 +226,15 @@ async function createWorkspace(
     // would stamp the new metadata with a
     // stale runtime version / flag set and defeat the compat check.
     const freshCompatibility = buildFreshCompatibility(config, runtimeVersion)
-    const sandbox = await createWorkspaceSandbox(info, config, env, freshCompatibility, baseTemplate, logger)
+    const sandbox = await createWorkspaceSandbox(
+      info,
+      config,
+      env,
+      freshCompatibility,
+      baseTemplate,
+      runtimeVersion,
+      logger,
+    )
 
     try {
       stage = "upload-snapshot"

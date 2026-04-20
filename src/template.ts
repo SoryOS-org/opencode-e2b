@@ -1,22 +1,63 @@
 import { createHash } from "node:crypto"
 
-import { ApiClient, ConnectionConfig, Template, TemplateError, waitForProcess } from "e2b"
+import { ApiClient, ConnectionConfig, Template, TemplateError } from "e2b"
 
 import type { BaseTemplateFingerprint, PluginLogger, SandboxMetadataCompatibility } from "./types.js"
 
 /**
- * Bump this whenever the managed template's startup behavior changes so the
- * plugin builds a fresh alias instead of reusing an older derived template.
+ * Bump this whenever the managed template's *build recipe* or *start behavior*
+ * changes. The revision is stirred into the alias hash, so bumping it forces
+ * every workspace to build a fresh derived template the next time it runs and
+ * effectively retires templates produced by earlier plugin versions.
+ *
+ * Revision history:
+ *   - "1": Idle derived template (`tail -f /dev/null`), install + start at
+ *          sandbox spawn time.
+ *   - "2": Runtime-baked template (opencode installed at build time, start
+ *          command waits for bootstrap marker, then execs the pinned binary).
  */
-const MANAGED_TEMPLATE_REVISION = "1"
+const MANAGED_TEMPLATE_REVISION = "2"
 
 /**
- * The replacement template start command deliberately does nothing except keep
- * PID 1 alive. This prevents the baked template from auto-starting an old
- * OpenCode process before the plugin has a chance to install the pinned local
- * runtime version and launch the server itself.
+ * Absolute path inside the sandbox where the plugin writes an empty file to
+ * signal that per-workspace provisioning (snapshot upload, project marker)
+ * has finished and the baked `opencode` server may start serving. Chosen to
+ * live outside the project tree so it does not pollute uploaded snapshots or
+ * accidentally get committed by users.
  */
-const IDLE_TEMPLATE_START_COMMAND = "tail -f /dev/null"
+export const BOOTSTRAP_READY_MARKER = "/tmp/.opencode-e2b-bootstrap-ready"
+
+/**
+ * Absolute path inside the sandbox where the baked start command records the
+ * post-install location of the `opencode` binary. Computed once at template
+ * build time after the pinned runtime has been installed, so the start
+ * command can `exec` it by absolute path without relying on PATH ordering at
+ * spawn time.
+ */
+const BAKED_BIN_PATH_FILE = "/opt/opencode-e2b/bin-path"
+
+/**
+ * Absolute path inside the sandbox where the baked start command redirects
+ * stdout/stderr so the plugin can tail it on readiness timeout. Matches the
+ * log path bootstrap.ts reads from.
+ */
+const START_COMMAND_LOG_PATH = "/tmp/opencode-serve.log"
+
+/**
+ * Compatibility flag emitted into sandbox metadata by the current plugin.
+ * Sandboxes created before the runtime-baked template design carry
+ * `template:managed-idle-start` instead; the mismatch detector below treats
+ * that as incompatible so they get replaced on next reuse.
+ */
+export const RUNTIME_BAKED_FLAG = "template:runtime-baked"
+
+/**
+ * Compatibility flag emitted by the previous (idle + spawn-time install)
+ * plugin version. Detected so we can reject sandboxes provisioned under the
+ * old design instead of silently attaching to them and never starting a
+ * server.
+ */
+const LEGACY_IDLE_FLAG = "template:managed-idle-start"
 
 /**
  * Keep one in-flight build promise per managed alias so concurrent workspace
@@ -24,6 +65,22 @@ const IDLE_TEMPLATE_START_COMMAND = "tail -f /dev/null"
  * derived template.
  */
 const managedTemplatePromises = new Map<string, Promise<string>>()
+
+/**
+ * Inputs that influence the baked start command and therefore the managed
+ * template identity. Changing any of these produces a different alias and a
+ * fresh template build.
+ */
+export type ManagedTemplateInputs = {
+  /** Upstream base template identity resolved from the user-configured name. */
+  baseTemplate: BaseTemplateFingerprint
+  /** Pinned controller version to install into the template at build time. */
+  runtimeVersion: string
+  /** Absolute path inside the sandbox where uploaded project files live. */
+  projectPath: string
+  /** TCP port that `opencode serve` should bind to. */
+  serverPort: number
+}
 
 /**
  * Resolve the current upstream template/build identifiers behind the configured
@@ -78,22 +135,23 @@ export async function resolveBaseTemplateFingerprint(
 }
 
 /**
- * Build or reuse a derived E2B template that replaces the base template's
- * startup command with an inert process. `Sandbox.create()` cannot override a
- * template entrypoint directly, so provisioning must happen through a managed
- * template alias instead.
+ * Build or reuse a derived E2B template that bakes the pinned OpenCode runtime
+ * into the image and uses a start command which waits for the plugin's
+ * bootstrap marker before execing `opencode serve`. `Sandbox.create()` cannot
+ * override a template entrypoint directly, so provisioning must happen through
+ * a managed template alias.
  */
 export async function ensureManagedWorkspaceTemplate(
-  baseTemplate: BaseTemplateFingerprint,
+  inputs: ManagedTemplateInputs,
   logger?: PluginLogger,
 ): Promise<string> {
-  const alias = buildManagedTemplateAlias(baseTemplate)
+  const alias = buildManagedTemplateAlias(inputs)
   const existing = managedTemplatePromises.get(alias)
   if (existing) {
     return existing
   }
 
-  const resolution = buildManagedWorkspaceTemplate(baseTemplate, alias, logger)
+  const resolution = buildManagedWorkspaceTemplate(inputs, alias, logger)
   managedTemplatePromises.set(alias, resolution)
 
   try {
@@ -111,55 +169,84 @@ export async function ensureManagedWorkspaceTemplate(
  * been published yet.
  */
 async function buildManagedWorkspaceTemplate(
-  baseTemplate: BaseTemplateFingerprint,
+  inputs: ManagedTemplateInputs,
   alias: string,
   logger?: PluginLogger,
 ): Promise<string> {
   await logger?.info("managed template lookup start", {
-    baseTemplate: baseTemplate.requestedTemplate,
-    baseTemplateId: baseTemplate.templateId ?? undefined,
-    baseTemplateBuildId: baseTemplate.buildId ?? undefined,
+    baseTemplate: inputs.baseTemplate.requestedTemplate,
+    baseTemplateId: inputs.baseTemplate.templateId ?? undefined,
+    baseTemplateBuildId: inputs.baseTemplate.buildId ?? undefined,
+    runtimeVersion: inputs.runtimeVersion,
+    projectPath: inputs.projectPath,
+    serverPort: inputs.serverPort,
     alias,
     revision: MANAGED_TEMPLATE_REVISION,
   })
 
   if (await Template.exists(alias)) {
     await logger?.info("managed template reuse", {
-      baseTemplate,
       alias,
     })
     return alias
   }
 
   await logger?.info("managed template build start", {
-    baseTemplate: baseTemplate.requestedTemplate,
-    baseTemplateId: baseTemplate.templateId ?? undefined,
-    baseTemplateBuildId: baseTemplate.buildId ?? undefined,
+    baseTemplate: inputs.baseTemplate.requestedTemplate,
+    runtimeVersion: inputs.runtimeVersion,
     alias,
   })
 
+  // Build commands run as root so we can delete any pre-baked `opencode`
+  // binary from the base image and install the pinned version into the
+  // system-wide npm prefix. Running as the template's default user would be
+  // safer in principle, but would reintroduce the PATH shadowing problem the
+  // purge step is specifically here to solve.
   const template = Template()
-    .fromTemplate(baseTemplate.requestedTemplate)
-    .setStartCmd(IDLE_TEMPLATE_START_COMMAND, waitForProcess("tail"))
+    .fromTemplate(inputs.baseTemplate.requestedTemplate)
+    // Purge every executable called `opencode` anywhere under the paths where
+    // base images typically install it, so only the version we install below
+    // is present after the build. `|| true` keeps the build green when there
+    // is nothing to remove (base images that ship without opencode pre-baked).
+    .runCmd(
+      "sh -c \"find /usr /opt /home /root -maxdepth 6 -name opencode -type f -executable 2>/dev/null | xargs -r rm -f; true\"",
+      { user: "root" },
+    )
+    // Bake the pinned controller version into the template. Subsequent
+    // sandboxes spawned from this alias start with exactly this binary — no
+    // spawn-time install, no PATH races, no version drift.
+    .runCmd(`npm install -g opencode-ai@${inputs.runtimeVersion}`, { user: "root" })
+    // Record the post-install binary path once, at build time, so the start
+    // command can `exec` it by absolute path at spawn time without re-running
+    // `command -v` (which would depend on spawn-time PATH).
+    .runCmd(
+      `sh -c "mkdir -p ${posixDirname(BAKED_BIN_PATH_FILE)} && command -v opencode > ${BAKED_BIN_PATH_FILE}"`,
+      { user: "root" },
+    )
+    .setStartCmd(
+      buildBakedStartCommand(inputs.projectPath, inputs.serverPort),
+      // E2B polls the ready command during `Sandbox.create()`. Because our
+      // start command blocks on a marker that only the plugin writes *after*
+      // create returns, any real readiness probe (waitForPort, waitForFile)
+      // would deadlock sandbox creation. `true` always exits 0, so E2B
+      // considers the sandbox ready as soon as init completes; the plugin
+      // drives a second readiness wait against /global/health once the
+      // bootstrap marker has been written.
+      "true",
+    )
 
   try {
     await Template.build(template, alias)
     await logger?.info("managed template build complete", {
-      baseTemplate: baseTemplate.requestedTemplate,
-      baseTemplateId: baseTemplate.templateId ?? undefined,
-      baseTemplateBuildId: baseTemplate.buildId ?? undefined,
       alias,
     })
     return alias
   } catch (error) {
     // A second OpenCode process may have published the same deterministic alias
     // while this build was running. Treat that as success instead of failing a
-    // perfectly reusable startup override.
+    // perfectly reusable template.
     if (await Template.exists(alias).catch(() => false)) {
       await logger?.warn("managed template build raced with existing alias", {
-        baseTemplate: baseTemplate.requestedTemplate,
-        baseTemplateId: baseTemplate.templateId ?? undefined,
-        baseTemplateBuildId: baseTemplate.buildId ?? undefined,
         alias,
         error: errorMessage(error),
       })
@@ -167,21 +254,56 @@ async function buildManagedWorkspaceTemplate(
     }
 
     throw new Error(
-      `Failed to build managed E2B template ${alias} from ${baseTemplate.requestedTemplate}: ${errorMessage(error)}`,
+      `Failed to build managed E2B template ${alias} from ${inputs.baseTemplate.requestedTemplate}: ${errorMessage(error)}`,
     )
   }
 }
 
 /**
- * Decide whether an existing sandbox should be replaced because the configured
- * base template now resolves to a different upstream build. Missing metadata is
- * treated as outdated so older sandboxes get one clean reprovision onto the new
- * tracking scheme.
+ * Construct the shell snippet executed as PID 1 of every sandbox spawned from
+ * this managed template. Steps, in order:
+ *
+ *   1. Redirect stdout+stderr to a known log path so readiness timeouts in the
+ *      plugin can tail real server output instead of a generic timeout.
+ *   2. Wait up to 10 minutes (2400 * 250ms) for the plugin to finish per-
+ *      workspace provisioning by creating `BOOTSTRAP_READY_MARKER`. The cap
+ *      prevents a zombie wait from keeping the sandbox alive indefinitely if
+ *      the plugin crashes mid-provision.
+ *   3. Chdir into the uploaded project path so `opencode serve` resolves the
+ *      workspace root without any extra flags.
+ *   4. `exec` the absolute path recorded at build time, replacing this shell
+ *      so opencode becomes PID 1 and signals sandbox exit if it dies.
+ */
+function buildBakedStartCommand(projectPath: string, serverPort: number): string {
+  const quotedProjectPath = shellQuote(projectPath)
+  return [
+    `exec >${START_COMMAND_LOG_PATH} 2>&1`,
+    `for _ in $(seq 1 2400); do [ -f ${BOOTSTRAP_READY_MARKER} ] && break; sleep 0.25; done`,
+    `cd ${quotedProjectPath} 2>/dev/null || true`,
+    `exec "$(cat ${BAKED_BIN_PATH_FILE})" serve --hostname 0.0.0.0 --port ${serverPort}`,
+  ].join(" && ")
+}
+
+/**
+ * Decide whether an existing sandbox should be replaced because the
+ * configured base template now resolves to a different upstream build, or
+ * because it was provisioned under an older plugin design whose bootstrap
+ * contract we no longer honor. Missing metadata is treated as outdated so
+ * older sandboxes get one clean reprovision onto the new tracking scheme.
  */
 export function describeBaseTemplateMismatch(
   currentBaseTemplate: BaseTemplateFingerprint,
   sandboxCompatibility: SandboxMetadataCompatibility,
 ): string | undefined {
+  // Sandboxes tagged with the legacy idle-start flag were spawned with a
+  // `tail -f /dev/null` main command and expect the plugin to run install +
+  // start at attach time. The current design bakes opencode into the
+  // template and does not re-run any install, so the legacy sandbox would
+  // never have a server listening after attach. Force a replacement.
+  if (sandboxCompatibility.flags.includes(LEGACY_IDLE_FLAG) && !sandboxCompatibility.flags.includes(RUNTIME_BAKED_FLAG)) {
+    return "sandbox was provisioned under the legacy idle-start plugin design; runtime-baked template is required"
+  }
+
   if (
     sandboxCompatibility.baseTemplate &&
     sandboxCompatibility.baseTemplate !== currentBaseTemplate.requestedTemplate
@@ -214,20 +336,26 @@ export function describeBaseTemplateMismatch(
 }
 
 /**
- * Derive a stable alias from the requested base template and the upstream build
- * it currently resolves to. When E2B publishes a newer build behind the same
- * alias, the managed template alias changes automatically and the plugin builds
- * a fresh idle-start derivative on demand.
+ * Derive a stable alias from the managed template inputs. Any change to the
+ * base template identity, pinned runtime version, project path, or server
+ * port produces a different alias and — because
+ * `ensureManagedWorkspaceTemplate` keys off the alias — a fresh template
+ * build on next use.
  */
-function buildManagedTemplateAlias(baseTemplate: BaseTemplateFingerprint): string {
-  const readableBase = normalizeAliasSegment(baseTemplate.requestedTemplate).slice(0, 32) || "template"
-  const identity = baseTemplate.buildId ?? baseTemplate.templateId ?? baseTemplate.requestedTemplate
+function buildManagedTemplateAlias(inputs: ManagedTemplateInputs): string {
+  const readableBase = normalizeAliasSegment(inputs.baseTemplate.requestedTemplate).slice(0, 24) || "template"
+  const baseIdentity = inputs.baseTemplate.buildId ?? inputs.baseTemplate.templateId ?? inputs.baseTemplate.requestedTemplate
+  // Use NUL as a separator so the hash is injective across inputs that happen
+  // to share suffixes/prefixes. The version is embedded so a plugin upgrade
+  // which changes the start-command template automatically rebuilds.
   const hash = createHash("sha256")
-    .update(`${MANAGED_TEMPLATE_REVISION}\0${identity}`)
+    .update(
+      [MANAGED_TEMPLATE_REVISION, baseIdentity, inputs.runtimeVersion, inputs.projectPath, String(inputs.serverPort)].join("\0"),
+    )
     .digest("hex")
     .slice(0, 12)
 
-  return `opencode-idle-${readableBase}-r${MANAGED_TEMPLATE_REVISION}-${hash}`
+  return `opencode-rt-${readableBase}-r${MANAGED_TEMPLATE_REVISION}-${hash}`
 }
 
 /**
@@ -358,6 +486,26 @@ function normalizeAliasSegment(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
+}
+
+/**
+ * Single-quote a value for safe embedding in a /bin/sh command. Unlike
+ * importing `node:path/posix`, this helper is dependency-free and only
+ * supports the narrow escaping rule we need for POSIX paths.
+ */
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`
+}
+
+/**
+ * Extract the parent directory of an absolute POSIX path. Used to `mkdir -p`
+ * the directory that holds the baked binary-path record without pulling in
+ * node:path/posix just for one call.
+ */
+function posixDirname(path: string): string {
+  const lastSlash = path.lastIndexOf("/")
+  if (lastSlash <= 0) return "/"
+  return path.slice(0, lastSlash)
 }
 
 /**

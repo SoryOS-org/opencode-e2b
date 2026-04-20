@@ -40,16 +40,38 @@ export async function resolveBaseTemplateFingerprint(
 
   const reference = parseTemplateReference(requestedTemplate)
   const client = new ApiClient(new ConnectionConfig())
-  const templateId = await resolveTemplateId(client, reference.name)
-  const buildId = reference.tag
-    ? await resolveTaggedBuildId(templateId, reference.tag, requestedTemplate)
-    : await resolveLatestReadyBuildId(client, templateId, requestedTemplate)
 
-  const fingerprint = {
-    requestedTemplate,
-    templateId,
-    buildId,
-  }
+  const fingerprint = await (async (): Promise<BaseTemplateFingerprint> => {
+    try {
+      const templateId = await resolveTemplateId(client, reference.name)
+      const buildId = reference.tag
+        ? await resolveTaggedBuildId(templateId, reference.tag, requestedTemplate)
+        : await resolveLatestReadyBuildId(client, templateId, requestedTemplate)
+
+      return {
+        requestedTemplate,
+        templateId,
+        buildId,
+      }
+    } catch (error) {
+      if (!isOpaqueTemplateAccessError(error)) {
+        throw error
+      }
+
+      await logger?.warn("base template fingerprint lookup fell back to requested template", {
+        requestedTemplate,
+        error: errorMessage(error),
+      })
+
+      // Public provider templates like `opencode` can be spawnable without
+      // exposing their template metadata through the template API. In that
+      // case we still proceed with managed-template startup override, but we
+      // cannot track upstream build churn for automatic replacement.
+      return {
+        requestedTemplate,
+      }
+    }
+  })()
 
   await logger?.info("base template fingerprint lookup complete", fingerprint)
   return fingerprint
@@ -95,8 +117,8 @@ async function buildManagedWorkspaceTemplate(
 ): Promise<string> {
   await logger?.info("managed template lookup start", {
     baseTemplate: baseTemplate.requestedTemplate,
-    baseTemplateId: baseTemplate.templateId,
-    baseTemplateBuildId: baseTemplate.buildId,
+    baseTemplateId: baseTemplate.templateId ?? undefined,
+    baseTemplateBuildId: baseTemplate.buildId ?? undefined,
     alias,
     revision: MANAGED_TEMPLATE_REVISION,
   })
@@ -111,8 +133,8 @@ async function buildManagedWorkspaceTemplate(
 
   await logger?.info("managed template build start", {
     baseTemplate: baseTemplate.requestedTemplate,
-    baseTemplateId: baseTemplate.templateId,
-    baseTemplateBuildId: baseTemplate.buildId,
+    baseTemplateId: baseTemplate.templateId ?? undefined,
+    baseTemplateBuildId: baseTemplate.buildId ?? undefined,
     alias,
   })
 
@@ -124,8 +146,8 @@ async function buildManagedWorkspaceTemplate(
     await Template.build(template, alias)
     await logger?.info("managed template build complete", {
       baseTemplate: baseTemplate.requestedTemplate,
-      baseTemplateId: baseTemplate.templateId,
-      baseTemplateBuildId: baseTemplate.buildId,
+      baseTemplateId: baseTemplate.templateId ?? undefined,
+      baseTemplateBuildId: baseTemplate.buildId ?? undefined,
       alias,
     })
     return alias
@@ -136,8 +158,8 @@ async function buildManagedWorkspaceTemplate(
     if (await Template.exists(alias).catch(() => false)) {
       await logger?.warn("managed template build raced with existing alias", {
         baseTemplate: baseTemplate.requestedTemplate,
-        baseTemplateId: baseTemplate.templateId,
-        baseTemplateBuildId: baseTemplate.buildId,
+        baseTemplateId: baseTemplate.templateId ?? undefined,
+        baseTemplateBuildId: baseTemplate.buildId ?? undefined,
         alias,
         error: errorMessage(error),
       })
@@ -160,6 +182,18 @@ export function describeBaseTemplateMismatch(
   currentBaseTemplate: BaseTemplateFingerprint,
   sandboxCompatibility: SandboxMetadataCompatibility,
 ): string | undefined {
+  if (
+    sandboxCompatibility.baseTemplate &&
+    sandboxCompatibility.baseTemplate !== currentBaseTemplate.requestedTemplate
+  ) {
+    return (
+      `sandbox was created from configured base template ${sandboxCompatibility.baseTemplate}, ` +
+      `but the workspace now requests ${currentBaseTemplate.requestedTemplate}`
+    )
+  }
+  if (!currentBaseTemplate.buildId) {
+    return undefined
+  }
   if (!sandboxCompatibility.baseTemplateBuildId) {
     return "sandbox metadata is missing the tracked base template build ID"
   }
@@ -175,12 +209,6 @@ export function describeBaseTemplateMismatch(
       `but ${currentBaseTemplate.requestedTemplate} now resolves to ${currentBaseTemplate.templateId}`
     )
   }
-  if (sandboxCompatibility.baseTemplate && sandboxCompatibility.baseTemplate !== currentBaseTemplate.requestedTemplate) {
-    return (
-      `sandbox was created from configured base template ${sandboxCompatibility.baseTemplate}, ` +
-      `but the workspace now requests ${currentBaseTemplate.requestedTemplate}`
-    )
-  }
 
   return undefined
 }
@@ -193,8 +221,9 @@ export function describeBaseTemplateMismatch(
  */
 function buildManagedTemplateAlias(baseTemplate: BaseTemplateFingerprint): string {
   const readableBase = normalizeAliasSegment(baseTemplate.requestedTemplate).slice(0, 32) || "template"
+  const identity = baseTemplate.buildId ?? baseTemplate.templateId ?? baseTemplate.requestedTemplate
   const hash = createHash("sha256")
-    .update(`${MANAGED_TEMPLATE_REVISION}\0${baseTemplate.templateId}\0${baseTemplate.buildId}`)
+    .update(`${MANAGED_TEMPLATE_REVISION}\0${identity}`)
     .digest("hex")
     .slice(0, 12)
 
@@ -313,6 +342,15 @@ function resolveBuildTimestamp(build: { finishedAt?: string; updatedAt: string; 
 }
 
 /**
+ * Detect template API failures where the alias is usable for sandbox creation
+ * but its metadata is intentionally hidden from the current API key.
+ */
+function isOpaqueTemplateAccessError(error: unknown): boolean {
+  const message = errorMessage(error).toLowerCase()
+  return message.includes("403") || message.includes("don't have access to this template alias")
+}
+
+/**
  * Convert a provider template name into an alias-safe slug.
  */
 function normalizeAliasSegment(value: string): string {
@@ -327,5 +365,8 @@ function normalizeAliasSegment(value: string): string {
  */
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+    return error.message
+  }
   return String(error)
 }

@@ -53,8 +53,8 @@ export function buildSandboxMetadata(
     [RUNTIME_VERSION_METADATA_KEY]: compatibility.runtimeVersion,
     [FLAGS_METADATA_KEY]: JSON.stringify(compatibility.flags),
     [BASE_TEMPLATE_METADATA_KEY]: baseTemplate.requestedTemplate,
-    [BASE_TEMPLATE_ID_METADATA_KEY]: baseTemplate.templateId,
-    [BASE_TEMPLATE_BUILD_ID_METADATA_KEY]: baseTemplate.buildId,
+    ...(baseTemplate.templateId ? { [BASE_TEMPLATE_ID_METADATA_KEY]: baseTemplate.templateId } : {}),
+    ...(baseTemplate.buildId ? { [BASE_TEMPLATE_BUILD_ID_METADATA_KEY]: baseTemplate.buildId } : {}),
   }
 }
 

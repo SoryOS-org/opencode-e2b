@@ -110,8 +110,8 @@ export type PersistedWorkspaceExtra = {
  */
 export type BaseTemplateFingerprint = {
   requestedTemplate: string
-  templateId: string
-  buildId: string
+  templateId?: string
+  buildId?: string
 }
 
 /**

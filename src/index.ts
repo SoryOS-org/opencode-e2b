@@ -2,6 +2,7 @@ import type { Plugin, PluginInput, WorkspaceInfo } from "@opencode-ai/plugin"
 
 import { bootstrapWorkspace } from "./bootstrap.js"
 import {
+  buildFreshContract,
   buildPersistedExtra,
   defaultWorkspaceName,
   normalizeOptions,
@@ -195,7 +196,12 @@ async function createWorkspace(
     await logger?.info("create workspace provisioning sandbox", {
       workspaceID: info.id,
     })
-    const sandbox = await createWorkspaceSandbox(info, config, env, contract)
+    // A brand-new sandbox must be tagged with the current runtime's contract,
+    // not the prior (potentially killed) sandbox's contract that lives in
+    // `extra`. Using `contract` here would stamp the new metadata with a
+    // stale runtime version / flag set and defeat the compat check.
+    const freshContract = buildFreshContract(config, runtimeVersion)
+    const sandbox = await createWorkspaceSandbox(info, config, env, freshContract)
 
     try {
       stage = "upload-snapshot"

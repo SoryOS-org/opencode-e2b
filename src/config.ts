@@ -129,17 +129,31 @@ export function resolveWorkspaceContract(
 ): PersistedWorkspaceContract {
   const extra = readPersistedExtra(info)
   if (!extra) {
-    return {
-      workspaceApiVersion: config.workspaceApiVersion,
-      runtimeVersion,
-      flags: config.flags,
-    }
+    return buildFreshContract(config, runtimeVersion)
   }
 
   return {
     workspaceApiVersion: extra.e2b.workspaceApiVersion,
     runtimeVersion: extra.e2b.runtimeVersion,
     flags: extra.e2b.flags,
+  }
+}
+
+/**
+ * Build a contract that reflects the current plugin + controller state,
+ * ignoring whatever was previously persisted. Use this whenever a sandbox is
+ * provisioned fresh (first create, or replacement after an incompatible one
+ * was killed) so its metadata matches the code that just wrote it, not a
+ * prior generation that no longer exists.
+ */
+export function buildFreshContract(
+  config: NormalizedE2BWorkspaceConfig,
+  runtimeVersion: string,
+): PersistedWorkspaceContract {
+  return {
+    workspaceApiVersion: config.workspaceApiVersion,
+    runtimeVersion,
+    flags: config.flags,
   }
 }
 

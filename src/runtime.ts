@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises"
+import { createRequire } from "node:module"
+import path from "node:path"
 import { Sandbox } from "e2b"
 
 import { CURRENT_WORKSPACE_API_VERSION } from "./config.js"
@@ -7,8 +10,9 @@ import type {
   SandboxMetadataContract,
 } from "./types.js"
 
-const GLOBAL_HEALTH_PATH = "/global/health"
 const HEALTH_TIMEOUT_MS = 1_500
+const require = createRequire(import.meta.url)
+let installedRuntimeVersionPromise: Promise<string> | undefined
 
 /**
  * Process-local cache of sandbox IDs that have already been confirmed
@@ -39,8 +43,8 @@ export function forgetSandboxCompatibility(sandboxId: string): void {
  * Resolve the version of the currently running local OpenCode server.
  */
 export async function resolveLocalRuntimeVersion(serverUrl: URL, logger?: PluginLogger): Promise<string> {
-  const health = await fetchRuntimeHealth(serverUrl, { logger, target: "local-controller" })
-  return health.version
+  void serverUrl
+  return resolveInstalledRuntimeVersion(logger)
 }
 
 /**
@@ -58,7 +62,7 @@ export async function probeRemoteRuntimeVersion(params: {
   headers?: Record<string, string>
 }): Promise<string> {
   try {
-    const health = await fetchRuntimeHealth(params.baseUrl, {
+    const health = await fetchRemoteRuntimeHealth(params.baseUrl, {
       logger: params.logger,
       target: "remote-workspace",
       headers: params.headers,
@@ -71,7 +75,7 @@ export async function probeRemoteRuntimeVersion(params: {
       const healthMessage = errorMessage(healthError)
       const cliMessage = errorMessage(cliError)
       throw new Error(
-        `Failed to determine remote OpenCode version from ${new URL(GLOBAL_HEALTH_PATH, params.baseUrl)} or \`opencode --version\`: ${healthMessage}; ${cliMessage}`,
+        `Failed to determine remote OpenCode version from ${remoteHealthUrl(params.baseUrl)} or \`opencode --version\`: ${healthMessage}; ${cliMessage}`,
       )
     }
   }
@@ -134,9 +138,9 @@ export async function assertWorkspaceCompatibility(params: {
 }
 
 /**
- * Fetch the OpenCode health payload from a local or remote server URL.
+ * Fetch the OpenCode health payload from a remote workspace URL.
  */
-async function fetchRuntimeHealth(
+async function fetchRemoteRuntimeHealth(
   baseUrl: URL,
   options?: {
     logger?: PluginLogger
@@ -144,7 +148,7 @@ async function fetchRuntimeHealth(
     headers?: Record<string, string>
   },
 ): Promise<{ healthy: true; version: string }> {
-  const healthUrl = new URL(GLOBAL_HEALTH_PATH, baseUrl)
+  const healthUrl = remoteHealthUrl(baseUrl)
   const startedAt = Date.now()
 
   await options?.logger?.info("runtime health probe start", {
@@ -188,6 +192,56 @@ async function fetchRuntimeHealth(
     })
     throw error
   }
+}
+
+/**
+ * Resolve the local controller version from the installed OpenCode plugin
+ * package metadata. OpenCode publishes the runtime and plugin packages in
+ * lockstep, so this avoids any self-HTTP dependency during workspace creation
+ * while still producing the version string needed for compatibility checks.
+ */
+async function resolveInstalledRuntimeVersion(logger?: PluginLogger): Promise<string> {
+  installedRuntimeVersionPromise ??= readInstalledRuntimeVersion(logger).catch(async (error) => {
+    installedRuntimeVersionPromise = undefined
+    await logger?.error("installed runtime version lookup failed", {
+      error: errorMessage(error),
+    })
+    throw error
+  })
+
+  return installedRuntimeVersionPromise
+}
+
+/**
+ * Read the installed `@opencode-ai/plugin` package.json that loaded this
+ * plugin and return its version field.
+ */
+async function readInstalledRuntimeVersion(logger?: PluginLogger): Promise<string> {
+  const pluginEntryPath = require.resolve("@opencode-ai/plugin")
+  const packageJsonPath = path.join(path.dirname(pluginEntryPath), "..", "package.json")
+
+  await logger?.info("installed runtime version lookup start", {
+    packageJsonPath,
+  })
+
+  const payload = JSON.parse(await readFile(packageJsonPath, "utf8")) as Partial<{ version: unknown }>
+  if (typeof payload.version !== "string" || !payload.version) {
+    throw new Error(`Missing version in ${packageJsonPath}`)
+  }
+
+  await logger?.info("installed runtime version lookup success", {
+    packageJsonPath,
+    version: payload.version,
+  })
+
+  return payload.version
+}
+
+/**
+ * Build the remote workspace health endpoint URL from its base server URL.
+ */
+function remoteHealthUrl(baseUrl: URL): URL {
+  return new URL("/global/health", baseUrl)
 }
 
 /**

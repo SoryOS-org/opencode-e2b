@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto"
+import { posix } from "node:path"
 
 import { ApiClient, ConnectionConfig, Template, TemplateError } from "e2b"
 
@@ -251,7 +252,7 @@ async function buildManagedWorkspaceTemplate(
     // command can `exec` it by absolute path at spawn time without re-running
     // `command -v` (which would depend on spawn-time PATH).
     .runCmd(
-      `sh -c "mkdir -p ${posixDirname(BAKED_BIN_PATH_FILE)} && command -v opencode > ${BAKED_BIN_PATH_FILE}"`,
+      `sh -c "mkdir -p ${posix.dirname(BAKED_BIN_PATH_FILE)} && command -v opencode > ${BAKED_BIN_PATH_FILE}"`,
       { user: "root" },
     )
     .setStartCmd(
@@ -538,15 +539,6 @@ function normalizeAliasSegment(value: string): string {
     .replace(/^-+|-+$/g, "")
 }
 
-/**
- * Extract the parent directory of an absolute POSIX path. Used to `mkdir -p`
- * the directory that holds the baked binary-path record without pulling in
- * node:path/posix just for one call.
- */
-function posixDirname(path: string): string {
-  const lastSlash = path.lastIndexOf("/")
-  if (lastSlash <= 0) return "/"
-  return path.slice(0, lastSlash)
-}
+
 
 

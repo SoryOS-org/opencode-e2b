@@ -49,7 +49,7 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
       prepareCommands: options?.bootstrap?.prepareCommands ?? [],
       installCommand: options?.bootstrap?.installCommand ?? "",
       startCommand:
-        options?.bootstrap?.startCommand ?? "opencode serve --hostname 0.0.0.0 --port ${PORT}",
+        options?.bootstrap?.startCommand ?? "${OPENCODE_BIN} serve --hostname 0.0.0.0 --port ${PORT}",
       waitForPath: options?.bootstrap?.waitForPath ?? "/global/health",
       waitForTimeoutMs,
     },
@@ -229,9 +229,13 @@ function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">
     flags.add("install:runtime-bootstrap")
   }
 
-  if (/\bopencode\b/.test(config.bootstrap.startCommand)) {
+  if (/\bopencode\b/.test(config.bootstrap.startCommand) || /\$\{OPENCODE_BIN\}/.test(config.bootstrap.startCommand)) {
     flags.add("bootstrap:clear-stale-opencode")
     flags.add("serve:opencode-cli")
+  }
+
+  if (/\$\{OPENCODE_BIN\}/.test(config.bootstrap.startCommand)) {
+    flags.add("serve:resolved-opencode-bin")
   }
 
   return [...flags]

@@ -3,7 +3,7 @@ import { posix } from "node:path"
 import type { WorkspaceInfo } from "@opencode-ai/plugin"
 import { Sandbox } from "e2b"
 
-import type { NormalizedE2BWorkspaceConfig } from "./types.js"
+import type { NormalizedE2BWorkspaceConfig, PluginLogger } from "./types.js"
 import { sandboxBaseUrl, sandboxTargetHeaders } from "./e2b.js"
 
 /**
@@ -22,10 +22,11 @@ export async function bootstrapWorkspace(params: {
   info: WorkspaceInfo
   config: NormalizedE2BWorkspaceConfig
   runtimeVersion: string
+  logger?: PluginLogger
 }): Promise<void> {
   await ensureGitRepository(params.sandbox, params.info, params.config)
   await writeProjectMarker(params.sandbox, params.info, params.config)
-  await runBootstrapCommands(params.sandbox, params.config, params.runtimeVersion)
+  await runBootstrapCommands(params.sandbox, params.config, params.runtimeVersion, params.logger)
   await waitForServerReady(params.sandbox, params.config)
 }
 
@@ -67,6 +68,7 @@ async function runBootstrapCommands(
   sandbox: Sandbox,
   config: NormalizedE2BWorkspaceConfig,
   runtimeVersion: string,
+  logger?: PluginLogger,
 ): Promise<void> {
   for (const command of config.bootstrap.prepareCommands) {
     if (!command.trim()) continue
@@ -78,13 +80,23 @@ async function runBootstrapCommands(
     await runCheckedCommand(sandbox, installCommand, config.projectPath)
   }
 
+  // Resolve the absolute path of the just-installed `opencode` binary. The
+  // E2B `opencode` base image ships an older `opencode` that typically
+  // resolves first on PATH (e.g. via `~/.bun/bin`), so a default install of
+  // `opencode-ai` through npm can silently end up on a different prefix.
+  // Running the freshly installed binary by absolute path ensures the server
+  // we start matches the version we actually asked for.
+  const resolvedOpencodeBin = await resolveOpencodeBinaryPath(sandbox, config, logger)
+
   await clearStaleOpencodeProcesses(sandbox, config)
 
   if (!config.bootstrap.startCommand.trim()) {
     throw new Error("Missing bootstrap.startCommand for E2B workspace")
   }
 
-  const startCommand = config.bootstrap.startCommand.replaceAll("${PORT}", String(config.serverPort))
+  const startCommand = config.bootstrap.startCommand
+    .replaceAll("${PORT}", String(config.serverPort))
+    .replaceAll("${OPENCODE_BIN}", resolvedOpencodeBin)
   // Redirect both stdout and stderr to a well-known log path inside the
   // sandbox so that if readiness times out we can fetch a tail and embed it
   // in the error message. Using `sh -c` keeps the redirection intact while
@@ -92,10 +104,84 @@ async function runBootstrapCommands(
   // hardcoded constant without shell metacharacters, so no further escaping
   // is needed for the redirection target itself.
   const supervisedCommand = `sh -c ${shellQuote(`${startCommand} >${START_COMMAND_LOG_PATH} 2>&1`)}`
+  await logger?.info("bootstrap launching opencode server", {
+    opencodeBin: resolvedOpencodeBin,
+    startCommand,
+  })
   await sandbox.commands.run(supervisedCommand, {
     cwd: config.projectPath,
     background: true,
   })
+}
+
+/**
+ * Resolve the absolute filesystem path of the `opencode` binary that should be
+ * launched to run the pinned server. Preference order:
+ *   1. The binary produced by the npm global install (`npm prefix -g` + bin).
+ *   2. Whatever `command -v opencode` resolves to with the current PATH.
+ *   3. The bare string "opencode" so callers relying on PATH still function.
+ *
+ * This is a best-effort lookup; failures are logged at info level and the
+ * fallback is returned so bootstrap can still proceed (the user will get a
+ * readable error from readiness if the path is wrong).
+ */
+async function resolveOpencodeBinaryPath(
+  sandbox: Sandbox,
+  config: NormalizedE2BWorkspaceConfig,
+  logger?: PluginLogger,
+): Promise<string> {
+  // npm prefix -g works on every supported npm version and prints the prefix
+  // that would be used by `npm install -g`, which is exactly the directory we
+  // just wrote the binary into if the default install command ran.
+  const prefixProbe = await sandbox.commands
+    .run("sh -c 'command -v npm >/dev/null 2>&1 && npm prefix -g'", { cwd: config.projectPath })
+    .catch((error: unknown) => ({ exitCode: 1, stdout: "", stderr: errorMessage(error) }))
+
+  if (prefixProbe.exitCode === 0) {
+    const prefix = prefixProbe.stdout.trim()
+    if (prefix) {
+      const candidate = posix.join(prefix, "bin", "opencode")
+      const exists = await sandbox.files.exists(candidate).catch(() => false)
+      if (exists) {
+        await logger?.info("bootstrap resolved opencode binary", {
+          source: "npm-prefix",
+          path: candidate,
+        })
+        return candidate
+      }
+
+      await logger?.info("bootstrap npm prefix lookup missed opencode binary", {
+        prefix,
+        candidate,
+      })
+    }
+  } else {
+    await logger?.info("bootstrap npm prefix lookup failed", {
+      exitCode: prefixProbe.exitCode,
+      stderr: prefixProbe.stderr.trim(),
+    })
+  }
+
+  // Fall back to whatever PATH currently resolves `opencode` to. This handles
+  // user-provided custom install commands that don't use npm, at the cost of
+  // still depending on PATH ordering.
+  const whichProbe = await sandbox.commands
+    .run("sh -c 'command -v opencode'", { cwd: config.projectPath })
+    .catch((error: unknown) => ({ exitCode: 1, stdout: "", stderr: errorMessage(error) }))
+
+  if (whichProbe.exitCode === 0) {
+    const path = whichProbe.stdout.trim()
+    if (path) {
+      await logger?.info("bootstrap resolved opencode binary", {
+        source: "command-v",
+        path,
+      })
+      return path
+    }
+  }
+
+  await logger?.warn("bootstrap could not resolve opencode binary, falling back to PATH", {})
+  return "opencode"
 }
 
 /**
@@ -222,6 +308,15 @@ async function runCheckedCommand(sandbox: Sandbox, command: string, cwd?: string
  */
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Normalize unknown thrown values into a readable message string suitable for
+ * embedding in structured logs or synthetic command results.
+ */
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return String(error)
 }
 
 /**

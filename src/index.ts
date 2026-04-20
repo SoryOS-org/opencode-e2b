@@ -247,6 +247,7 @@ async function createWorkspace(
         info,
         config,
         runtimeVersion,
+        logger,
       })
 
       await logger?.info("create workspace complete", {

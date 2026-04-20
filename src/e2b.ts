@@ -21,7 +21,6 @@ const BASE_TEMPLATE_ID_METADATA_KEY = "opencodeBaseTemplateId"
 const BASE_TEMPLATE_BUILD_ID_METADATA_KEY = "opencodeBaseTemplateBuildId"
 
 type WorkspaceSandboxRecord = {
-  sandboxId: string
   sandbox: Sandbox
   metadata: Record<string, string>
 }
@@ -127,7 +126,6 @@ export async function findWorkspaceSandboxRecord(
   }
 
   return {
-    sandboxId: match.sandboxId,
     sandbox: await Sandbox.connect(match.sandboxId, {
       timeoutMs: config.sandboxTimeoutMs,
     }),

@@ -18,6 +18,7 @@ import {
 } from "./e2b.js"
 import {
   assertWorkspaceCompatibility,
+  forgetSandboxCompatibility,
   resolveLocalRuntimeVersion,
 } from "./runtime.js"
 import type { E2BWorkspacePluginOptions, RuntimeWorkspaceAdaptor } from "./types.js"
@@ -177,7 +178,11 @@ async function createWorkspace(
           sandboxID: existingRecord.sandbox.sandboxId,
           error: errorMessage(error),
         })
-        await existingRecord.sandbox.kill()
+        try {
+          await existingRecord.sandbox.kill()
+        } finally {
+          forgetSandboxCompatibility(existingRecord.sandbox.sandboxId)
+        }
       }
     }
 

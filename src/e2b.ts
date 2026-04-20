@@ -1,6 +1,7 @@
 import type { WorkspaceInfo } from "@opencode-ai/plugin"
 import { Sandbox } from "e2b"
 
+import { forgetSandboxCompatibility } from "./runtime.js"
 import type {
   NormalizedE2BWorkspaceConfig,
   PersistedWorkspaceContract,
@@ -201,7 +202,13 @@ export async function removeWorkspaceSandbox(
       const sandbox = await Sandbox.connect(match.sandboxId, {
         timeoutMs: config.sandboxTimeoutMs,
       })
-      await sandbox.kill()
+      try {
+        await sandbox.kill()
+      } finally {
+        // Drop any cached compatibility verdict so a replacement sandbox that
+        // happens to reuse the ID is re-validated on next access.
+        forgetSandboxCompatibility(match.sandboxId)
+      }
     }),
   )
 }

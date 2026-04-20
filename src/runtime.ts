@@ -19,6 +19,31 @@ type SandboxMetadataContract = {
 }
 
 /**
+ * Process-local cache of sandbox IDs that have already been confirmed
+ * compatible with the current local OpenCode controller. Entries are keyed by
+ * sandbox ID and track the local runtime version they were proven against, so
+ * a controller upgrade during the same process naturally re-probes instead of
+ * trusting a stale positive result.
+ *
+ * Compatibility is a deterministic function of (sandbox metadata, sandbox's
+ * running OpenCode version, local controller version). None of those can
+ * change without going through create or restart, so caching positive results
+ * for the process lifetime is safe. Negative results are never cached because
+ * they throw before we'd reach the cache insertion.
+ */
+const compatibilityCache = new Map<string, { localRuntimeVersion: string }>()
+
+/**
+ * Invalidate the compatibility cache entry for a sandbox ID. Call this
+ * whenever the sandbox is killed or replaced so that a fresh sandbox
+ * created with the same ID (rare but possible across provider churn) is
+ * re-validated from scratch.
+ */
+export function forgetSandboxCompatibility(sandboxId: string): void {
+  compatibilityCache.delete(sandboxId)
+}
+
+/**
  * Resolve the version of the currently running local OpenCode server.
  */
 export async function resolveLocalRuntimeVersion(serverUrl: URL, logger?: PluginLogger): Promise<string> {
@@ -73,13 +98,27 @@ export async function assertWorkspaceCompatibility(params: {
     )
   }
 
+  // Short-circuit repeated probes for a sandbox that this process already
+  // validated against the current local controller. `target()` is called
+  // frequently (sync loop, session restore, proxy paths), so skipping the
+  // remote round-trip here is the biggest win of the cache.
+  const cached = compatibilityCache.get(params.sandbox.sandboxId)
+  if (cached && cached.localRuntimeVersion === params.localRuntimeVersion) {
+    return
+  }
+
   const remoteRuntimeVersion = await probeRemoteRuntimeVersion({
     baseUrl: params.baseUrl,
     sandbox: params.sandbox,
     projectPath: params.projectPath,
     logger: undefined,
   })
-  if (remoteRuntimeVersion === params.localRuntimeVersion) return
+  if (remoteRuntimeVersion === params.localRuntimeVersion) {
+    compatibilityCache.set(params.sandbox.sandboxId, {
+      localRuntimeVersion: params.localRuntimeVersion,
+    })
+    return
+  }
 
   const declaredRuntimeVersion = params.sandboxContract.runtimeVersion ?? params.persistedContract.runtimeVersion
   const declaredFlags = params.sandboxContract.flags.length ? params.sandboxContract.flags : params.persistedContract.flags

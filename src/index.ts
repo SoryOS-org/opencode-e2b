@@ -311,7 +311,7 @@ function createLazyRuntimeVersionResolver(serverUrl: URL, logger: PluginLogger):
           serverUrl: serverUrl.toString(),
         })
         try {
-          const runtimeVersion = await resolveLocalRuntimeVersion(serverUrl, logger)
+          const runtimeVersion = await resolveLocalRuntimeVersion(logger)
           await logger.info("resolved local runtime version", {
             serverUrl: serverUrl.toString(),
             runtimeVersion,

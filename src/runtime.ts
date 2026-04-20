@@ -38,11 +38,29 @@ export function forgetSandboxCompatibility(sandboxId: string): void {
 }
 
 /**
- * Resolve the version of the currently running local OpenCode server.
+ * Resolve the local controller's OpenCode runtime version by reading this
+ * plugin package's declared `@opencode-ai/plugin` dependency. OpenCode
+ * publishes the runtime and plugin packages in lockstep, so the pinned
+ * plugin version is an accurate stand-in for the controller runtime without
+ * needing a self-HTTP round-trip during workspace creation.
+ *
+ * Paired with `probeRemoteRuntimeVersion` which reaches out to the sandbox's
+ * health endpoint — together they produce the (local, remote) pair that
+ * drives the compatibility check.
+ *
+ * The resolved version is memoized for the process lifetime. A failure
+ * clears the cache so the next call re-reads `package.json`.
  */
-export async function resolveLocalRuntimeVersion(serverUrl: URL, logger?: PluginLogger): Promise<string> {
-  void serverUrl
-  return resolveInstalledRuntimeVersion(logger)
+export async function resolveLocalRuntimeVersion(logger?: PluginLogger): Promise<string> {
+  installedRuntimeVersionPromise ??= readInstalledRuntimeVersion(logger).catch(async (error) => {
+    installedRuntimeVersionPromise = undefined
+    await logger?.error("installed runtime version lookup failed", {
+      error: errorMessage(error),
+    })
+    throw error
+  })
+
+  return installedRuntimeVersionPromise
 }
 
 /**
@@ -194,24 +212,6 @@ async function fetchRemoteRuntimeHealth(
     })
     throw error
   }
-}
-
-/**
- * Resolve the local controller version from the installed OpenCode plugin
- * package metadata. OpenCode publishes the runtime and plugin packages in
- * lockstep, so this avoids any self-HTTP dependency during workspace creation
- * while still producing the version string needed for compatibility checks.
- */
-async function resolveInstalledRuntimeVersion(logger?: PluginLogger): Promise<string> {
-  installedRuntimeVersionPromise ??= readInstalledRuntimeVersion(logger).catch(async (error) => {
-    installedRuntimeVersionPromise = undefined
-    await logger?.error("installed runtime version lookup failed", {
-      error: errorMessage(error),
-    })
-    throw error
-  })
-
-  return installedRuntimeVersionPromise
 }
 
 /**

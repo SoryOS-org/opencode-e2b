@@ -187,6 +187,22 @@ export function sandboxBaseUrl(sandbox: Sandbox, config: NormalizedE2BWorkspaceC
 }
 
 /**
+ * Build the request headers required to reach a secured sandbox. E2B exposes
+ * a per-sandbox `trafficAccessToken` when `secure: true` is enabled, which
+ * must be passed to every HTTP request through the sandbox gateway. For
+ * non-secure sandboxes or sandboxes that somehow lack a token we return
+ * undefined so callers can continue without touching their fetch headers.
+ */
+export function sandboxTargetHeaders(
+  sandbox: Sandbox,
+  config: NormalizedE2BWorkspaceConfig,
+): Record<string, string> | undefined {
+  if (!config.secure) return undefined
+  if (!sandbox.trafficAccessToken) return undefined
+  return { "X-Access-Token": sandbox.trafficAccessToken }
+}
+
+/**
  * Remove the sandbox if it exists. Missing sandboxes are treated as already
  * deleted so workspace cleanup stays idempotent.
  */

@@ -4,7 +4,7 @@ import type { WorkspaceInfo } from "@opencode-ai/plugin"
 import { Sandbox } from "e2b"
 
 import type { NormalizedE2BWorkspaceConfig } from "./types.js"
-import { sandboxBaseUrl } from "./e2b.js"
+import { sandboxBaseUrl, sandboxTargetHeaders } from "./e2b.js"
 
 /**
  * Prepare the uploaded project in the sandbox and start the OpenCode server.
@@ -83,11 +83,13 @@ async function runBootstrapCommands(sandbox: Sandbox, config: NormalizedE2BWorks
 async function waitForServerReady(sandbox: Sandbox, config: NormalizedE2BWorkspaceConfig): Promise<void> {
   const baseUrl = sandboxBaseUrl(sandbox, config)
   const readyUrl = new URL(config.bootstrap.waitForPath, baseUrl)
+  const headers = sandboxTargetHeaders(sandbox, config)
   const startedAt = Date.now()
 
   while (Date.now() - startedAt < config.bootstrap.waitForTimeoutMs) {
     try {
       const response = await fetch(readyUrl, {
+        headers,
         signal: AbortSignal.timeout(1_500),
       })
       if (response.ok) {

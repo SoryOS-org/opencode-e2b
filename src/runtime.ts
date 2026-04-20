@@ -54,16 +54,23 @@ export async function resolveLocalRuntimeVersion(serverUrl: URL, logger?: Plugin
 /**
  * Probe the actual OpenCode version running inside the sandbox. The server
  * health endpoint is preferred, with a CLI fallback in case the server is up
- * but not yet exposing the health shape we expect.
+ * but not yet exposing the health shape we expect. When the sandbox gateway
+ * requires an access token (`secure: true`) the caller passes it via
+ * `headers` so the HTTPS round-trip isn't rejected at the edge.
  */
 export async function probeRemoteRuntimeVersion(params: {
   baseUrl: URL
   sandbox: Sandbox
   projectPath: string
   logger?: PluginLogger
+  headers?: Record<string, string>
 }): Promise<string> {
   try {
-    const health = await fetchRuntimeHealth(params.baseUrl, { logger: params.logger, target: "remote-workspace" })
+    const health = await fetchRuntimeHealth(params.baseUrl, {
+      logger: params.logger,
+      target: "remote-workspace",
+      headers: params.headers,
+    })
     return health.version
   } catch (healthError) {
     try {
@@ -90,6 +97,7 @@ export async function assertWorkspaceCompatibility(params: {
   sandbox: Sandbox
   baseUrl: URL
   projectPath: string
+  headers?: Record<string, string>
 }): Promise<void> {
   const declaredApiVersion = params.sandboxContract.workspaceApiVersion ?? params.persistedContract.workspaceApiVersion
   if (declaredApiVersion !== CURRENT_WORKSPACE_API_VERSION) {
@@ -112,6 +120,7 @@ export async function assertWorkspaceCompatibility(params: {
     sandbox: params.sandbox,
     projectPath: params.projectPath,
     logger: undefined,
+    headers: params.headers,
   })
   if (remoteRuntimeVersion === params.localRuntimeVersion) {
     compatibilityCache.set(params.sandbox.sandboxId, {
@@ -140,6 +149,7 @@ async function fetchRuntimeHealth(
   options?: {
     logger?: PluginLogger
     target: string
+    headers?: Record<string, string>
   },
 ): Promise<{ healthy: true; version: string }> {
   const healthUrl = new URL(GLOBAL_HEALTH_PATH, baseUrl)
@@ -153,6 +163,7 @@ async function fetchRuntimeHealth(
 
   try {
     const response = await fetch(healthUrl, {
+      headers: options?.headers,
       signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
     })
     if (!response.ok) {

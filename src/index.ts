@@ -15,6 +15,7 @@ import {
   readSandboxContract,
   requireWorkspaceSandboxRecord,
   sandboxBaseUrl,
+  sandboxTargetHeaders,
 } from "./e2b.js"
 import {
   assertWorkspaceCompatibility,
@@ -59,6 +60,7 @@ export const E2BWorkspacePlugin: Plugin = async (
       const contract = resolveWorkspaceContract(info, config, localRuntimeVersion)
       const record = await requireWorkspaceSandboxRecord(info, config)
       const baseUrl = sandboxBaseUrl(record.sandbox, config)
+      const headers = sandboxTargetHeaders(record.sandbox, config)
 
       await assertWorkspaceCompatibility({
         workspaceID: info.id,
@@ -68,11 +70,13 @@ export const E2BWorkspacePlugin: Plugin = async (
         sandbox: record.sandbox,
         baseUrl,
         projectPath: config.projectPath,
+        headers,
       })
 
       return {
         type: "remote",
         url: baseUrl,
+        ...(headers ? { headers } : {}),
       }
     },
   }
@@ -165,6 +169,7 @@ async function createWorkspace(
           sandbox: existingRecord.sandbox,
           baseUrl: sandboxBaseUrl(existingRecord.sandbox, config),
           projectPath: config.projectPath,
+          headers: sandboxTargetHeaders(existingRecord.sandbox, config),
         })
 
         await logger?.info("create workspace reusing compatible sandbox", {

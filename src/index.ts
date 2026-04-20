@@ -211,7 +211,7 @@ async function createWorkspace(
     // would stamp the new metadata with a
     // stale runtime version / flag set and defeat the compat check.
     const freshCompatibility = buildFreshCompatibility(config, runtimeVersion)
-    const sandbox = await createWorkspaceSandbox(info, config, env, freshCompatibility)
+    const sandbox = await createWorkspaceSandbox(info, config, env, freshCompatibility, logger)
 
     try {
       stage = "upload-snapshot"

@@ -2,9 +2,11 @@ import type { WorkspaceInfo } from "@opencode-ai/plugin"
 import { Sandbox } from "e2b"
 
 import { forgetSandboxCompatibility } from "./runtime.js"
+import { ensureManagedWorkspaceTemplate } from "./template.js"
 import type {
   NormalizedE2BWorkspaceConfig,
   PersistedWorkspaceCompatibility,
+  PluginLogger,
   SandboxMetadataCompatibility,
 } from "./types.js"
 
@@ -56,8 +58,11 @@ export async function createWorkspaceSandbox(
   config: NormalizedE2BWorkspaceConfig,
   env: Record<string, string | undefined>,
   compatibility: PersistedWorkspaceCompatibility,
+  logger?: PluginLogger,
 ): Promise<Sandbox> {
-  return Sandbox.create(config.template, {
+  const template = await ensureManagedWorkspaceTemplate(config.template, logger)
+
+  return Sandbox.create(template, {
     timeoutMs: config.sandboxTimeoutMs,
     metadata: buildSandboxMetadata(info, config, compatibility),
     envs: compactEnv(env),

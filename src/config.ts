@@ -217,6 +217,7 @@ function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">
   const flags = new Set<string>([
     "sync:local-snapshot-upload",
     "repo:git-init",
+    "template:managed-idle-start",
   ])
 
   if (config.bootstrap.prepareCommands.some((command) => command.trim())) {
@@ -228,6 +229,7 @@ function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">
   }
 
   if (/\bopencode\b/.test(config.bootstrap.startCommand)) {
+    flags.add("bootstrap:clear-stale-opencode")
     flags.add("serve:opencode-cli")
   }
 

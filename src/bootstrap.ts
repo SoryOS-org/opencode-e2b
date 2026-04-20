@@ -78,6 +78,8 @@ async function runBootstrapCommands(
     await runCheckedCommand(sandbox, installCommand, config.projectPath)
   }
 
+  await clearStaleOpencodeProcesses(sandbox, config)
+
   if (!config.bootstrap.startCommand.trim()) {
     throw new Error("Missing bootstrap.startCommand for E2B workspace")
   }
@@ -94,6 +96,26 @@ async function runBootstrapCommands(
     cwd: config.projectPath,
     background: true,
   })
+}
+
+/**
+ * Best-effort cleanup for stale OpenCode processes left behind by older base
+ * templates or prior manual debugging inside the sandbox. The managed idle
+ * template should keep this path mostly quiet, but clearing leftovers before we
+ * launch the pinned runtime avoids port conflicts and accidental readiness from
+ * an outdated server.
+ */
+async function clearStaleOpencodeProcesses(
+  sandbox: Sandbox,
+  config: NormalizedE2BWorkspaceConfig,
+): Promise<void> {
+  const result = await sandbox.commands.run("pkill -f '(^|/)opencode( |$)'", {
+    cwd: config.projectPath,
+  })
+
+  if (result.exitCode === 0 || result.exitCode === 1) {
+    return
+  }
 }
 
 /**

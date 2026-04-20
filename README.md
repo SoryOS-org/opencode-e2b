@@ -14,11 +14,12 @@ This repository contains a small TypeScript plugin package for OpenCode's experi
 ## What the first scaffold does
 
 - Registers an `e2b` workspace type.
+- Creates or reuses a managed E2B template whose startup command stays idle until the plugin takes over.
 - Creates an E2B sandbox for the workspace.
 - Uploads the current local project snapshot into the sandbox.
 - Prepares a repository in the sandbox if needed.
 - Writes the temporary `.git/opencode` project marker required by the current OpenCode workspace flow.
-- Starts `opencode serve` inside the sandbox.
+- Installs the local OpenCode version into the sandbox and then starts `opencode serve`.
 - Resolves the workspace target to the sandbox host URL.
 - Locates existing sandboxes by metadata rather than persisting the E2B sandbox ID in the OpenCode workspace row.
 
@@ -41,8 +42,10 @@ The plugin writes those values into E2B sandbox metadata at creation time and lo
 - `sync:local-snapshot-upload`
 - `repo:git-init`
 - `bootstrap:prepare-commands`
+- `bootstrap:clear-stale-opencode`
 - `install:runtime-bootstrap`
 - `serve:opencode-cli`
+- `template:managed-idle-start`
 
 Missing flags should be treated as `unknown`, not `false`, so older sandboxes can still be reconciled safely.
 
@@ -99,6 +102,7 @@ OPENCODE_EXPERIMENTAL_WORKSPACES=true opencode
 ## Notes on defaults
 
 - The scaffold defaults to the prebuilt E2B `opencode` template so the `opencode` CLI is already present in the sandbox.
+- The plugin derives a managed template from the configured base template and overrides its startup command to `tail -f /dev/null`, which prevents stale baked OpenCode processes from starting before the pinned runtime install runs.
 - The scaffold defaults to public sandbox traffic for the remote workspace URL.
 - The bootstrap commands remain configurable if you want to build on a different template or customize the startup flow.
 - The uploader intentionally uses a simple recursive snapshot model today. It excludes common heavy directories but is designed to be replaced with git-aware or tar-stream uploads later.

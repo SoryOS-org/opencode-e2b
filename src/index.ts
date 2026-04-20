@@ -24,6 +24,7 @@ import {
   forgetSandboxCompatibility,
   resolveLocalRuntimeVersion,
 } from "./runtime.js"
+import { describeBaseTemplateMismatch, resolveBaseTemplateFingerprint } from "./template.js"
 import type { E2BWorkspacePluginOptions, PluginLogger, RuntimeWorkspaceAdaptor } from "./types.js"
 import { uploadLocalSnapshot } from "./upload.js"
 
@@ -161,6 +162,9 @@ async function createWorkspace(
     stage = "resolve-compatibility"
     const compatibility = resolveWorkspaceCompatibility(info, config, runtimeVersion)
 
+    stage = "resolve-base-template"
+    const baseTemplate = await resolveBaseTemplateFingerprint(config.template, logger)
+
     stage = "find-existing-sandbox"
     const existingRecord = await findWorkspaceSandboxRecord(info, config)
     if (existingRecord) {
@@ -171,11 +175,17 @@ async function createWorkspace(
 
       stage = "validate-existing-sandbox"
       try {
+        const sandboxCompatibility = readSandboxCompatibility(existingRecord.metadata)
+        const baseTemplateMismatch = describeBaseTemplateMismatch(baseTemplate, sandboxCompatibility)
+        if (baseTemplateMismatch) {
+          throw new Error(baseTemplateMismatch)
+        }
+
         await assertWorkspaceCompatibility({
           workspaceID: info.id,
           localRuntimeVersion: runtimeVersion,
           persistedCompatibility: compatibility,
-          sandboxCompatibility: readSandboxCompatibility(existingRecord.metadata),
+          sandboxCompatibility,
           sandbox: existingRecord.sandbox,
           baseUrl: sandboxBaseUrl(existingRecord.sandbox, config),
           projectPath: config.projectPath,
@@ -211,7 +221,7 @@ async function createWorkspace(
     // would stamp the new metadata with a
     // stale runtime version / flag set and defeat the compat check.
     const freshCompatibility = buildFreshCompatibility(config, runtimeVersion)
-    const sandbox = await createWorkspaceSandbox(info, config, env, freshCompatibility, logger)
+    const sandbox = await createWorkspaceSandbox(info, config, env, freshCompatibility, baseTemplate, logger)
 
     try {
       stage = "upload-snapshot"

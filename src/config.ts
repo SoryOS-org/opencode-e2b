@@ -218,6 +218,7 @@ function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">
     "sync:local-snapshot-upload",
     "repo:git-init",
     "template:managed-idle-start",
+    "template:upstream-build-tracked",
   ])
 
   if (config.bootstrap.prepareCommands.some((command) => command.trim())) {

@@ -103,6 +103,18 @@ export type PersistedWorkspaceExtra = {
 }
 
 /**
+ * Fingerprint of the upstream E2B base template that the plugin derives its
+ * managed idle-start template from. The requested template string stays human
+ * readable, while the resolved template/build IDs let us detect when the
+ * provider has published a newer build behind the same alias.
+ */
+export type BaseTemplateFingerprint = {
+  requestedTemplate: string
+  templateId: string
+  buildId: string
+}
+
+/**
  * The runtime workspace adaptor API currently accepts an `env` object during
  * `create()`, but the published plugin type package is temporarily behind that
  * runtime surface. This local type keeps the scaffold aligned with current
@@ -142,4 +154,7 @@ export type SandboxMetadataCompatibility = {
   workspaceApiVersion?: string
   runtimeVersion?: string
   flags: string[]
+  baseTemplate?: string
+  baseTemplateId?: string
+  baseTemplateBuildId?: string
 }

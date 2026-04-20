@@ -46,6 +46,7 @@ The plugin writes those values into E2B sandbox metadata at creation time and lo
 - `install:runtime-bootstrap`
 - `serve:opencode-cli`
 - `template:managed-idle-start`
+- `template:upstream-build-tracked`
 
 Missing flags should be treated as `unknown`, not `false`, so older sandboxes can still be reconciled safely.
 
@@ -103,6 +104,7 @@ OPENCODE_EXPERIMENTAL_WORKSPACES=true opencode
 
 - The scaffold defaults to the prebuilt E2B `opencode` template so the `opencode` CLI is already present in the sandbox.
 - The plugin derives a managed template from the configured base template and overrides its startup command to `tail -f /dev/null`, which prevents stale baked OpenCode processes from starting before the pinned runtime install runs.
+- The managed template alias is keyed by the upstream base-template build ID, so when E2B updates the configured base template the plugin provisions a fresh derived template and replaces older sandboxes on the next `create()`.
 - The scaffold defaults to public sandbox traffic for the remote workspace URL.
 - The bootstrap commands remain configurable if you want to build on a different template or customize the startup flow.
 - The uploader intentionally uses a simple recursive snapshot model today. It excludes common heavy directories but is designed to be replaced with git-aware or tar-stream uploads later.

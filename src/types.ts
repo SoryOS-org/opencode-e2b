@@ -87,13 +87,12 @@ export type PersistedWorkspaceCompatibility = {
 /**
  * Data persisted into `WorkspaceInfo.extra`. This is intentionally limited to
  * stable, serializable configuration that later adaptor calls need to resolve
- * the same remote workspace behavior.
+ * the same remote workspace behavior. The compatibility subset is spliced in
+ * via intersection so the "extra is a superset of compatibility" relationship
+ * is expressed in the type rather than duplicated field-by-field.
  */
 export type PersistedWorkspaceExtra = {
-  e2b: {
-    workspaceApiVersion: string
-    runtimeVersion: string
-    flags: string[]
+  e2b: PersistedWorkspaceCompatibility & {
     template: string
     projectPath: string
     serverPort: number

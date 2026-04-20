@@ -7,6 +7,14 @@ import type { NormalizedE2BWorkspaceConfig } from "./types.js"
 import { sandboxBaseUrl, sandboxTargetHeaders } from "./e2b.js"
 
 /**
+ * Absolute path inside the sandbox where the OpenCode server's combined
+ * stdout+stderr are redirected. We read from here on readiness-check
+ * failure so the user can see the actual server error instead of just a
+ * generic timeout.
+ */
+const START_COMMAND_LOG_PATH = "/tmp/opencode-serve.log"
+
+/**
  * Prepare the uploaded project in the sandbox and start the OpenCode server.
  */
 export async function bootstrapWorkspace(params: {
@@ -69,7 +77,14 @@ async function runBootstrapCommands(sandbox: Sandbox, config: NormalizedE2BWorks
   }
 
   const startCommand = config.bootstrap.startCommand.replaceAll("${PORT}", String(config.serverPort))
-  await sandbox.commands.run(startCommand, {
+  // Redirect both stdout and stderr to a well-known log path inside the
+  // sandbox so that if readiness times out we can fetch a tail and embed it
+  // in the error message. Using `sh -c` keeps the redirection intact while
+  // still running the command in the background. START_COMMAND_LOG_PATH is a
+  // hardcoded constant without shell metacharacters, so no further escaping
+  // is needed for the redirection target itself.
+  const supervisedCommand = `sh -c ${shellQuote(`${startCommand} >${START_COMMAND_LOG_PATH} 2>&1`)}`
+  await sandbox.commands.run(supervisedCommand, {
     cwd: config.projectPath,
     background: true,
   })
@@ -114,19 +129,53 @@ async function waitForServerReady(sandbox: Sandbox, config: NormalizedE2BWorkspa
     await sleep(750)
   }
 
-  throw new Error(`Timed out waiting for OpenCode server at ${readyUrl.toString()}`)
+  // The server never came up within the window. Best-effort fetch the tail of
+  // the combined stdout/stderr log so the user sees the actual startup error
+  // (install failure, port conflict, crashed subprocess, etc.) instead of a
+  // generic timeout.
+  const tail = await readStartCommandLogTail(sandbox).catch(() => undefined)
+  const suffix = tail ? `\nLast ${tail.split("\n").length} lines from ${START_COMMAND_LOG_PATH}:\n${tail}` : ""
+  throw new Error(`Timed out waiting for OpenCode server at ${readyUrl.toString()}${suffix}`)
 }
 
 /**
- * Run a remote command and fail with stderr included when the command exits
- * unsuccessfully.
+ * Read the last few lines of the captured start-command log. Runs as a
+ * best-effort diagnostic and must never mask the original readiness error:
+ * callers always catch and ignore failures from this helper.
+ */
+async function readStartCommandLogTail(sandbox: Sandbox): Promise<string | undefined> {
+  const exists = await sandbox.files.exists(START_COMMAND_LOG_PATH)
+  if (!exists) return undefined
+
+  const content = await sandbox.files.read(START_COMMAND_LOG_PATH)
+  const lines = content.split("\n")
+  // Keep the output bounded so the error message stays readable.
+  const maxLines = 40
+  const slice = lines.length > maxLines ? lines.slice(lines.length - maxLines) : lines
+  return slice.join("\n").trim()
+}
+
+/**
+ * Run a remote command and fail with its captured output included when the
+ * command exits unsuccessfully. Many install/bootstrap commands write their
+ * most useful diagnostics to stdout rather than stderr (npm, pip, apt all
+ * do this in common failure modes), so we surface both streams.
  */
 async function runCheckedCommand(sandbox: Sandbox, command: string, cwd?: string): Promise<void> {
   const result = await sandbox.commands.run(command, { cwd })
   if (result.exitCode === 0) return
 
   const stderr = result.stderr.trim()
-  throw new Error(stderr ? `Remote command failed: ${stderr}` : `Remote command failed: ${command}`)
+  const stdout = result.stdout.trim()
+  const details = [
+    `exit ${result.exitCode}`,
+    stderr ? `stderr: ${stderr}` : undefined,
+    stdout ? `stdout: ${stdout}` : undefined,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join("\n")
+
+  throw new Error(`Remote command failed: ${command}\n${details}`)
 }
 
 /**

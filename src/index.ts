@@ -248,9 +248,16 @@ async function createWorkspace(
         stage,
         error: errorMessage(error),
       })
-      await sandbox.kill().catch(() => {
-        // Ignore sandbox cleanup failures and preserve the original bootstrap error.
+      // Preserve the original bootstrap error, but surface kill failures as
+      // a warning so we don't silently leave an orphan sandbox behind.
+      await sandbox.kill().catch(async (killError: unknown) => {
+        await logger?.warn("create workspace failed to kill sandbox during cleanup", {
+          workspaceID: info.id,
+          sandboxID: sandbox.sandboxId,
+          error: errorMessage(killError),
+        })
       })
+      forgetSandboxCompatibility(sandbox.sandboxId)
       throw error
     }
   } catch (error) {

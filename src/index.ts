@@ -8,6 +8,7 @@ import {
   normalizeOptions,
   resolveWorkspaceContract,
   resolveWorkspaceConfig,
+  validatePluginOptions,
 } from "./config.js"
 import {
   createWorkspaceSandbox,
@@ -33,7 +34,11 @@ export const E2BWorkspacePlugin: Plugin = async (
   { client, directory, experimental_workspace, serverUrl },
   rawOptions,
 ) => {
-  const options = rawOptions as E2BWorkspacePluginOptions | undefined
+  // OpenCode loads plugin options from user-controlled JSON, so we shape-check
+  // them before any of the runtime code trusts field types. Failing here
+  // surfaces the problem at plugin load time rather than deep inside an E2B
+  // SDK call during workspace creation.
+  const options = validatePluginOptions(rawOptions)
   const logger = createPluginLogger(client)
   const getLocalRuntimeVersion = createLazyRuntimeVersionResolver(serverUrl, logger)
 

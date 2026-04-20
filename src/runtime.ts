@@ -1,22 +1,14 @@
 import { Sandbox } from "e2b"
 
 import { CURRENT_WORKSPACE_API_VERSION } from "./config.js"
-import type { PersistedWorkspaceContract } from "./types.js"
+import type {
+  PersistedWorkspaceContract,
+  PluginLogger,
+  SandboxMetadataContract,
+} from "./types.js"
 
 const GLOBAL_HEALTH_PATH = "/global/health"
 const HEALTH_TIMEOUT_MS = 1_500
-
-type PluginLogger = {
-  info(message: string, extra?: Record<string, unknown>): Promise<void>
-  warn(message: string, extra?: Record<string, unknown>): Promise<void>
-  error(message: string, extra?: Record<string, unknown>): Promise<void>
-}
-
-type SandboxMetadataContract = {
-  workspaceApiVersion?: string
-  runtimeVersion?: string
-  flags: string[]
-}
 
 /**
  * Process-local cache of sandbox IDs that have already been confirmed

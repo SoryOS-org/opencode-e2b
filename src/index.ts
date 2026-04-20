@@ -24,7 +24,7 @@ import {
   forgetSandboxCompatibility,
   resolveLocalRuntimeVersion,
 } from "./runtime.js"
-import type { E2BWorkspacePluginOptions, RuntimeWorkspaceAdaptor } from "./types.js"
+import type { E2BWorkspacePluginOptions, PluginLogger, RuntimeWorkspaceAdaptor } from "./types.js"
 import { uploadLocalSnapshot } from "./upload.js"
 
 /**
@@ -305,12 +305,6 @@ function createLazyRuntimeVersionResolver(serverUrl: URL, logger: PluginLogger):
 }
 
 type PluginLogLevel = "info" | "warn" | "error"
-
-type PluginLogger = {
-  info(message: string, extra?: Record<string, unknown>): Promise<void>
-  warn(message: string, extra?: Record<string, unknown>): Promise<void>
-  error(message: string, extra?: Record<string, unknown>): Promise<void>
-}
 
 /**
  * Write plugin diagnostics through OpenCode's normal application log route so

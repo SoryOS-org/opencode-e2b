@@ -120,3 +120,26 @@ export type RuntimeWorkspaceAdaptor = {
   remove(info: WorkspaceInfo): Promise<void>
   target(info: WorkspaceInfo): Promise<{ type: "remote"; url: string | URL; headers?: HeadersInit }>
 }
+
+/**
+ * Minimal logger shape used across plugin modules. The concrete
+ * implementation lives in index.ts and forwards through the OpenCode app log
+ * endpoint; everything else that needs to emit diagnostics accepts this
+ * interface so we don't scatter duplicate definitions.
+ */
+export type PluginLogger = {
+  info(message: string, extra?: Record<string, unknown>): Promise<void>
+  warn(message: string, extra?: Record<string, unknown>): Promise<void>
+  error(message: string, extra?: Record<string, unknown>): Promise<void>
+}
+
+/**
+ * Parsed view of the workspace-contract fields stored in E2B sandbox
+ * metadata. Fields are optional because older sandboxes may predate some
+ * keys, and an unknown flag set should never be confused with an empty set.
+ */
+export type SandboxMetadataContract = {
+  workspaceApiVersion?: string
+  runtimeVersion?: string
+  flags: string[]
+}

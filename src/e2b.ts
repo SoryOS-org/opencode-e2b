@@ -5,6 +5,7 @@ import { forgetSandboxCompatibility } from "./runtime.js"
 import type {
   NormalizedE2BWorkspaceConfig,
   PersistedWorkspaceContract,
+  SandboxMetadataContract,
 } from "./types.js"
 
 const WORKSPACE_ID_METADATA_KEY = "opencodeWorkspaceId"
@@ -26,12 +27,6 @@ type WorkspaceSandboxRecord = {
 type WorkspaceSandboxMatch = {
   sandboxId: string
   metadata: Record<string, string>
-}
-
-type SandboxMetadataContract = {
-  workspaceApiVersion?: string
-  runtimeVersion?: string
-  flags: string[]
 }
 
 /**
@@ -135,32 +130,6 @@ async function listWorkspaceSandboxMatches(info: WorkspaceInfo): Promise<Workspa
   }
 
   return matches
-}
-
-/**
- * Find and connect to the sandbox associated with a workspace.
- */
-export async function findWorkspaceSandbox(
-  info: WorkspaceInfo,
-  config: NormalizedE2BWorkspaceConfig,
-): Promise<Sandbox | undefined> {
-  const record = await findWorkspaceSandboxRecord(info, config)
-  return record?.sandbox
-}
-
-/**
- * Require an existing sandbox and fail with a clear workspace-scoped error
- * message when it is missing.
- */
-export async function requireWorkspaceSandbox(
-  info: WorkspaceInfo,
-  config: NormalizedE2BWorkspaceConfig,
-): Promise<Sandbox> {
-  const sandbox = await findWorkspaceSandbox(info, config)
-  if (!sandbox) {
-    throw new Error(`No E2B sandbox found for workspace ${info.id}`)
-  }
-  return sandbox
 }
 
 /**

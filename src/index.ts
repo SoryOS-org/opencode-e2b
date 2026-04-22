@@ -57,8 +57,6 @@ export const E2BWorkspacePlugin: Plugin = async (
     throw error
   }
 
-  const getLocalRuntimeVersion = createLazyRuntimeVersionResolver(serverUrl, logger)
-
   await logger.info("registering workspace adaptor", {
     directory,
     serverUrl: serverUrl.toString(),
@@ -72,17 +70,17 @@ export const E2BWorkspacePlugin: Plugin = async (
     name: "E2B Sandbox",
     description: "Provision a sandboxed OpenCode workspace in E2B",
     async configure(info) {
-      return configureWorkspace(info, options, getLocalRuntimeVersion(), logger)
+      return configureWorkspace(info, options, logger)
     },
     async create(info, env) {
-      await createWorkspace(info, env, directory, getLocalRuntimeVersion(), options, logger)
+      await createWorkspace(info, env, directory, options, logger)
     },
     async remove(info) {
       const config = resolveWorkspaceConfig(info, options)
       await removeWorkspaceSandbox(info, config)
     },
     async target(info) {
-      const localRuntimeVersion = await getLocalRuntimeVersion()
+      const localRuntimeVersion = await resolveLocalRuntimeVersion(logger)
       const config = resolveWorkspaceConfig(info, options)
       const compatibility = resolveWorkspaceCompatibility(info, config, localRuntimeVersion)
       const record = await requireWorkspaceSandboxRecord(info, config)
@@ -121,7 +119,6 @@ export default E2BWorkspacePlugin
 async function configureWorkspace(
   info: WorkspaceInfo,
   options: E2BWorkspacePluginOptions | undefined,
-  runtimeVersionPromise: Promise<string>,
   logger: PluginLogger,
 ): Promise<WorkspaceInfo> {
   const config = normalizeOptions(options)
@@ -131,7 +128,7 @@ async function configureWorkspace(
     projectPath: config.projectPath,
     template: config.template,
   })
-  const runtimeVersion = await runtimeVersionPromise
+  const runtimeVersion = await resolveLocalRuntimeVersion(logger)
 
   await logger.info("configure workspace resolved local runtime", {
     workspaceID: info.id,
@@ -154,7 +151,6 @@ async function createWorkspace(
   info: WorkspaceInfo,
   env: Record<string, string | undefined>,
   localDirectory: string,
-  runtimeVersionPromise: Promise<string>,
   options?: E2BWorkspacePluginOptions,
   logger?: PluginLogger,
 ): Promise<void> {
@@ -169,7 +165,7 @@ async function createWorkspace(
   })
 
   try {
-    const runtimeVersion = await runtimeVersionPromise
+    const runtimeVersion = await resolveLocalRuntimeVersion(logger)
     await logger?.info("create workspace resolved local runtime", {
       workspaceID: info.id,
       runtimeVersion,
@@ -304,40 +300,6 @@ async function createWorkspace(
       error: errorMessage(error),
     })
     throw error
-  }
-}
-
-/**
- * Cache the local runtime version lookup so repeated adaptor calls compare
- * against a single consistent controller version.
- */
-function createLazyRuntimeVersionResolver(serverUrl: URL, logger: PluginLogger): () => Promise<string> {
-  let runtimeVersionPromise: Promise<string> | undefined
-
-  return () => {
-    if (!runtimeVersionPromise) {
-      runtimeVersionPromise = (async () => {
-        await logger.info("resolving local runtime version", {
-          serverUrl: serverUrl.toString(),
-        })
-        try {
-          const runtimeVersion = await resolveLocalRuntimeVersion(logger)
-          await logger.info("resolved local runtime version", {
-            serverUrl: serverUrl.toString(),
-            runtimeVersion,
-          })
-          return runtimeVersion
-        } catch (error) {
-          await logger.error("failed to resolve local runtime version", {
-            serverUrl: serverUrl.toString(),
-            error: errorMessage(error),
-          })
-          runtimeVersionPromise = undefined
-          throw error
-        }
-      })()
-    }
-    return runtimeVersionPromise
   }
 }
 

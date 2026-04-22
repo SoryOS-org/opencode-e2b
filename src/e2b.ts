@@ -34,7 +34,7 @@ type WorkspaceSandboxMatch = {
  * Build the metadata attached to each E2B sandbox so later adaptor calls can
  * rediscover the sandbox without storing the generated sandbox ID locally.
  */
-export function buildSandboxMetadata(
+function buildSandboxMetadata(
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
   compatibility: PersistedWorkspaceCompatibility,

@@ -95,7 +95,6 @@ export const E2BWorkspacePlugin: Plugin = async (
         sandboxCompatibility: readSandboxCompatibility(record.metadata),
         sandbox: record.sandbox,
         baseUrl,
-        projectPath: config.projectPath,
         headers,
       })
 
@@ -196,7 +195,6 @@ async function createWorkspace(
           sandboxCompatibility,
           sandbox: existingRecord.sandbox,
           baseUrl: sandboxBaseUrl(existingRecord.sandbox, config),
-          projectPath: config.projectPath,
           headers: sandboxTargetHeaders(existingRecord.sandbox, config),
         })
 
@@ -265,7 +263,6 @@ async function createWorkspace(
         sandbox,
         info,
         config,
-        runtimeVersion,
         env,
         logger,
       })

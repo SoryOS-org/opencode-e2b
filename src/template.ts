@@ -11,7 +11,7 @@ import type { PluginLogger } from "./types.js"
  * port, and this plugin's own package version. Any change to those inputs
  * produces a fresh alias and therefore a fresh template build.
  */
-export const MANAGED_TEMPLATE_PREFIX = "opencode-rt-"
+const MANAGED_TEMPLATE_PREFIX = "opencode-rt-"
 
 /**
  * Absolute path inside the sandbox where the plugin writes an empty file to
@@ -54,7 +54,7 @@ const managedTemplatePromises = new Map<string, Promise<string>>()
  * Inputs that influence the managed template identity. Changing any of these
  * produces a different alias and a fresh template build.
  */
-export type ManagedTemplateInputs = {
+type ManagedTemplateInputs = {
   /** Node Docker variant passed to `Template().fromNodeImage(...)`. */
   nodeVariant: string
   /** Pinned controller version to install into the template at build time. */

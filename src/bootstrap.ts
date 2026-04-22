@@ -33,11 +33,9 @@ export async function bootstrapWorkspace(params: {
   sandbox: Sandbox
   info: WorkspaceInfo
   config: NormalizedE2BWorkspaceConfig
-  runtimeVersion: string
   env: Record<string, string | undefined>
   logger?: PluginLogger
 }): Promise<void> {
-  void params.runtimeVersion
   await runPrepareCommands(params.sandbox, params.config)
   await ensureGitRepository(params.sandbox, params.info, params.config)
   await writeProjectMarker(params.sandbox, params.info, params.config)
@@ -56,7 +54,7 @@ export async function bootstrapWorkspace(params: {
  * longer part of the runtime flow: the pinned controller is installed at
  * template build time and launched by the template's baked start command.
  * Any values users set for those fields are validated by config.ts but
- * otherwise ignored — config.ts logs a deprecation warning at normalization.
+ * otherwise ignored; the plugin logs a deprecation warning once at load time.
  */
 async function runPrepareCommands(
   sandbox: Sandbox,
@@ -254,5 +252,4 @@ async function runCheckedCommand(sandbox: Sandbox, command: string, cwd?: string
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms))
 }
-
 

@@ -215,7 +215,7 @@ export function defaultWorkspaceName(info: WorkspaceInfo): string {
  * Parse the persisted `extra` payload when it matches the plugin's expected
  * shape. Invalid or unrelated `extra` values are ignored instead of failing.
  */
-export function readPersistedExtra(info: WorkspaceInfo): PersistedWorkspaceExtra | undefined {
+function readPersistedExtra(info: WorkspaceInfo): PersistedWorkspaceExtra | undefined {
   if (!info.extra || typeof info.extra !== "object") return undefined
 
   const candidate = info.extra as Partial<PersistedWorkspaceExtra>

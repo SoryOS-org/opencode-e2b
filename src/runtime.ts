@@ -113,10 +113,8 @@ export async function resolveLocalPluginVersion(): Promise<string> {
  * caller passes it via `headers` so the HTTPS round-trip isn't rejected at the
  * edge.
  */
-export async function probeRemoteRuntimeVersion(params: {
+async function probeRemoteRuntimeVersion(params: {
   baseUrl: URL
-  sandbox: Sandbox
-  projectPath: string
   logger?: PluginLogger
   headers?: Record<string, string>
 }): Promise<string> {
@@ -140,7 +138,6 @@ export async function assertWorkspaceCompatibility(params: {
   sandboxCompatibility: SandboxMetadataCompatibility
   sandbox: Sandbox
   baseUrl: URL
-  projectPath: string
   headers?: Record<string, string>
 }): Promise<void> {
   const declaredApiVersion =
@@ -162,8 +159,6 @@ export async function assertWorkspaceCompatibility(params: {
 
   const remoteRuntimeVersion = await probeRemoteRuntimeVersion({
     baseUrl: params.baseUrl,
-    sandbox: params.sandbox,
-    projectPath: params.projectPath,
     logger: undefined,
     headers: params.headers,
   })

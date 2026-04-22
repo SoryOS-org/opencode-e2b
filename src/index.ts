@@ -50,6 +50,7 @@ export const E2BWorkspacePlugin: Plugin = async (
     // a generic AuthenticationError only when the first Sandbox.create call
     // runs, by which point the user has already committed to the workflow.
     assertE2BApiKeyAvailable()
+    await resolveLocalRuntimeVersion(serverUrl, logger)
   } catch (error) {
     await logger.error("plugin load failed", {
       error: errorMessage(error),
@@ -70,17 +71,17 @@ export const E2BWorkspacePlugin: Plugin = async (
     name: "E2B Sandbox",
     description: "Provision a sandboxed OpenCode workspace in E2B",
     async configure(info) {
-      return configureWorkspace(info, options, logger)
+      return configureWorkspace(info, options, serverUrl, logger)
     },
     async create(info, env) {
-      await createWorkspace(info, env, directory, options, logger)
+      await createWorkspace(info, env, directory, options, serverUrl, logger)
     },
     async remove(info) {
       const config = resolveWorkspaceConfig(info, options)
       await removeWorkspaceSandbox(info, config)
     },
     async target(info) {
-      const localRuntimeVersion = await resolveLocalRuntimeVersion(logger)
+      const localRuntimeVersion = await resolveLocalRuntimeVersion(serverUrl, logger)
       const config = resolveWorkspaceConfig(info, options)
       const compatibility = resolveWorkspaceCompatibility(info, config, localRuntimeVersion)
       const record = await requireWorkspaceSandboxRecord(info, config)
@@ -119,6 +120,7 @@ export default E2BWorkspacePlugin
 async function configureWorkspace(
   info: WorkspaceInfo,
   options: E2BWorkspacePluginOptions | undefined,
+  serverUrl: URL,
   logger: PluginLogger,
 ): Promise<WorkspaceInfo> {
   const config = normalizeOptions(options)
@@ -128,7 +130,7 @@ async function configureWorkspace(
     projectPath: config.projectPath,
     template: config.template,
   })
-  const runtimeVersion = await resolveLocalRuntimeVersion(logger)
+  const runtimeVersion = await resolveLocalRuntimeVersion(serverUrl, logger)
 
   await logger.info("configure workspace resolved local runtime", {
     workspaceID: info.id,
@@ -151,7 +153,8 @@ async function createWorkspace(
   info: WorkspaceInfo,
   env: Record<string, string | undefined>,
   localDirectory: string,
-  options?: E2BWorkspacePluginOptions,
+  options: E2BWorkspacePluginOptions | undefined,
+  serverUrl: URL,
   logger?: PluginLogger,
 ): Promise<void> {
   const config = resolveWorkspaceConfig(info, options)
@@ -165,7 +168,7 @@ async function createWorkspace(
   })
 
   try {
-    const runtimeVersion = await resolveLocalRuntimeVersion(logger)
+    const runtimeVersion = await resolveLocalRuntimeVersion(serverUrl, logger)
     await logger?.info("create workspace resolved local runtime", {
       workspaceID: info.id,
       runtimeVersion,

@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises"
 import { Sandbox } from "e2b"
 
 import { CURRENT_WORKSPACE_API_VERSION } from "./config.js"
@@ -38,25 +37,28 @@ export function forgetSandboxCompatibility(sandboxId: string): void {
 }
 
 /**
- * Resolve the local controller's OpenCode runtime version by reading this
- * plugin package's declared `@opencode-ai/plugin` dependency. OpenCode
- * publishes the runtime and plugin packages in lockstep, so the pinned
- * plugin version is an accurate stand-in for the controller runtime without
- * needing a self-HTTP round-trip during workspace creation.
+ * Resolve the local controller's OpenCode runtime version by probing the same
+ * health endpoint the plugin already uses for remote sandboxes. Reading a
+ * declared dependency from this package can drift from the running controller
+ * under bundling or dev-linked installs, while `serverUrl` reflects the actual
+ * local binary backing the current OpenCode process.
  *
  * Paired with `probeRemoteRuntimeVersion` which reaches out to the sandbox's
  * health endpoint — together they produce the (local, remote) pair that
  * drives the compatibility check.
  *
  * The resolved version is memoized for the process lifetime. A failure
- * clears the cache so the next call re-reads `package.json`.
+ * clears the cache so the next call re-probes the controller.
  */
-export async function resolveLocalRuntimeVersion(logger?: PluginLogger): Promise<string> {
-  installedRuntimeVersionPromise ??= readInstalledRuntimeVersion(logger).catch(async (error) => {
+export async function resolveLocalRuntimeVersion(
+  serverUrl: URL,
+  logger?: PluginLogger,
+): Promise<string> {
+  installedRuntimeVersionPromise ??= fetchRemoteRuntimeHealth(serverUrl, {
+    target: "local-controller",
+    logger,
+  }).then((health) => health.version).catch((error) => {
     installedRuntimeVersionPromise = undefined
-    await logger?.error("installed runtime version lookup failed", {
-      error: errorMessage(error),
-    })
     throw error
   })
 
@@ -215,44 +217,6 @@ async function fetchRemoteRuntimeHealth(
 }
 
 /**
- * Read this plugin package's declared OpenCode plugin dependency and treat it
- * as the local controller runtime version. OpenCode publishes the runtime and
- * plugin packages in lockstep, and local managed plugins are loaded directly
- * from the repo root, so `../package.json` is stable even when node_modules are
- * not available from the generated `dist/` entrypoint.
- */
-async function readInstalledRuntimeVersion(logger?: PluginLogger): Promise<string> {
-  const packageJsonPath = new URL("../package.json", import.meta.url)
-
-  await logger?.info("installed runtime version lookup start", {
-    packageJsonPath: packageJsonPath.toString(),
-  })
-
-  const payload = JSON.parse(await readFile(packageJsonPath, "utf8")) as Partial<{
-    dependencies: Record<string, unknown>
-    devDependencies: Record<string, unknown>
-    peerDependencies: Record<string, unknown>
-  }>
-  const declaredVersion =
-    payload.dependencies?.["@opencode-ai/plugin"] ??
-    payload.devDependencies?.["@opencode-ai/plugin"] ??
-    payload.peerDependencies?.["@opencode-ai/plugin"]
-  const version = typeof declaredVersion === "string" ? extractVersion(declaredVersion) : undefined
-
-  if (!version) {
-    throw new Error(`Missing @opencode-ai/plugin version in ${packageJsonPath}`)
-  }
-
-  await logger?.info("installed runtime version lookup success", {
-    packageJsonPath: packageJsonPath.toString(),
-    declaredVersion,
-    version,
-  })
-
-  return version
-}
-
-/**
  * Build the remote workspace health endpoint URL from its base server URL.
  */
 function remoteHealthUrl(baseUrl: URL): URL {
@@ -287,5 +251,4 @@ function extractVersion(output: string): string | undefined {
   const match = output.match(/\b\d+\.\d+\.\d+(?:[-+][^\s]+)?\b/)
   return match?.[0]
 }
-
 

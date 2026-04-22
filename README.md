@@ -46,22 +46,28 @@ The plugin writes those values into E2B sandbox metadata at creation time and lo
 - `bootstrap:prepare-commands`
 - `install:node-base`
 
-Missing flags should be treated as `unknown`, not `false`, so older sandboxes can still be reconciled safely.
+Missing flags should be treated as `unknown`, not `false`.
 
 ## Version handling
 
-- **Minimum supported OpenCode version: `1.14.20`.** Both the local controller and any reused sandbox's baked runtime must meet this floor. The plugin refuses to register against an older local controller, and refuses to attach to a pre-floor sandbox (which is then replaced on next create).
-- The local OpenCode runtime version is probed at plugin load via `GET /global/health` against `PluginInput.serverUrl`, which is the running local controller. The probe also gates the floor check, so a missing or too-old controller fails fast at registration time.
-- The local version is baked into the managed template at build time via `npm install -g opencode-ai@<version>`, so every sandbox spawned fresh from the template ships a floor-compliant controller by construction.
-- The plugin's own package version is also mixed into the managed-template alias hash. That gives plugin releases a simple escape hatch to force a rebuild even when the pinned OpenCode runtime version stays the same.
-- The remote sandbox version is probed from `GET /global/health` on the remote OpenCode server. There is no CLI fallback; any sandbox reaching `target()` has already cleared the same health endpoint during `create()`'s readiness wait.
-- Above the floor, sandbox reuse still requires the local controller version, the persisted workspace runtime version, and the sandbox metadata runtime version to match. `workspaceApiVersion` remains the real breaking-change gate for broader protocol changes.
-- The plugin refuses to attach to a sandbox when:
-  - `opencodeWorkspaceApiVersion` does not match the current workspace compatibility version
-  - the probed remote OpenCode version is below `1.14.20` (or unparseable)
-  - the workspace or sandbox metadata advertises a different OpenCode runtime version than the local controller
-
-Bumping the floor requires a new plugin release; the value lives as a single constant in `src/runtime.ts`.
+- **Minimum supported OpenCode version: `1.14.20`.** The floor lives as a single
+  constant in `src/runtime.ts`; bumping it requires a plugin release.
+- The local OpenCode runtime version is probed at plugin load via
+  `GET /global/health` against `PluginInput.serverUrl`. The probe both resolves
+  the version and gates the floor check, so a missing or too-old controller
+  fails fast at registration time.
+- That local version is baked into the managed template via
+  `npm install -g opencode-ai@<version>` at build time, so fresh sandboxes
+  ship a floor-compliant controller by construction.
+- The plugin's own `package.json` `version` is mixed into the managed-template
+  alias hash, giving plugin releases a rebuild escape hatch even when the
+  pinned runtime version is unchanged.
+- The remote sandbox version is probed from `GET /global/health` on the remote
+  OpenCode server; there is no CLI fallback.
+- Reuse is gated by:
+  - `opencodeWorkspaceApiVersion` matching the current workspace compatibility
+    version (the breaking-change gate for protocol changes), and
+  - the probed remote OpenCode version meeting the floor.
 
 ## Usage
 

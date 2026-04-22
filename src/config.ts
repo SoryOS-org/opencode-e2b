@@ -9,7 +9,7 @@ import type {
 } from "./types.js"
 
 export const CURRENT_WORKSPACE_API_VERSION = "1"
-const DEFAULT_TEMPLATE = "opencode"
+const DEFAULT_NODE_VARIANT = "22-slim"
 
 const DEFAULT_IGNORE = [
   ".git",
@@ -35,7 +35,7 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
 
   const config = {
     workspaceApiVersion: CURRENT_WORKSPACE_API_VERSION,
-    template: options?.template ?? DEFAULT_TEMPLATE,
+    nodeVariant: options?.nodeVariant ?? DEFAULT_NODE_VARIANT,
     sandboxTimeoutMs,
     projectPath: options?.projectPath ?? "/home/user/project",
     serverPort,
@@ -125,7 +125,7 @@ export function buildPersistedExtra(
       workspaceApiVersion: config.workspaceApiVersion,
       runtimeVersion,
       flags: config.flags,
-      template: config.template,
+      nodeVariant: config.nodeVariant,
       projectPath: config.projectPath,
       serverPort: config.serverPort,
       secure: config.secure,
@@ -147,12 +147,10 @@ export function resolveWorkspaceConfig(
   const extra = readPersistedExtra(info)
   if (!extra) return normalized
 
-  const template = resolvePersistedTemplate(extra.e2b.template, options)
-
   return {
     ...normalized,
     workspaceApiVersion: extra.e2b.workspaceApiVersion,
-    template,
+    nodeVariant: extra.e2b.nodeVariant,
     projectPath: extra.e2b.projectPath,
     serverPort: extra.e2b.serverPort,
     secure: extra.e2b.secure,
@@ -162,23 +160,6 @@ export function resolveWorkspaceConfig(
       ...extra.e2b.metadata,
     },
   }
-}
-
-/**
- * Older plugin builds defaulted to E2B's generic `base` template, which does
- * not include the `opencode` CLI and causes bootstrap to fail with
- * `opencode: not found`. When we encounter that legacy persisted default and
- * the user has not explicitly asked for a template, upgrade it in place to the
- * current `opencode` default so retries do not keep recreating broken
- * sandboxes.
- */
-function resolvePersistedTemplate(
-  persistedTemplate: string,
-  options?: E2BWorkspacePluginOptions,
-): string {
-  if (options?.template) return options.template
-  if (persistedTemplate === "base") return DEFAULT_TEMPLATE
-  return persistedTemplate
 }
 
 /**
@@ -244,7 +225,7 @@ export function readPersistedExtra(info: WorkspaceInfo): PersistedWorkspaceExtra
   if (!Array.isArray(candidate.e2b.flags) || !candidate.e2b.flags.every((flag) => typeof flag === "string")) {
     return undefined
   }
-  if (typeof candidate.e2b.template !== "string") return undefined
+  if (typeof candidate.e2b.nodeVariant !== "string") return undefined
   if (typeof candidate.e2b.projectPath !== "string") return undefined
   if (typeof candidate.e2b.serverPort !== "number") return undefined
   if (typeof candidate.e2b.secure !== "boolean") return undefined
@@ -261,28 +242,18 @@ function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">
   const flags = new Set<string>([
     "sync:local-snapshot-upload",
     "repo:git-init",
-    // Runtime is baked into the managed template at build time; sandboxes
-    // spawn with the pinned opencode already installed and start via a
-    // marker-gated exec in the template's init command. See src/template.ts.
-    "template:runtime-baked",
-    // Per-workspace envs (OPENCODE_WORKSPACE_ID, OPENCODE_EXPERIMENTAL_WORKSPACES,
-    // OPENCODE_AUTH_CONTENT, OTEL_*) are written to /tmp/.opencode-e2b.env
-    // before the bootstrap-ready marker and sourced by the baked start
-    // command. Sandboxes missing this flag were provisioned under managed
-    // template rev 2 with sync effectively disabled and get replaced on
-    // next reuse.
-    "template:env-injected-startup",
-    "template:upstream-build-tracked",
+    // Managed templates now start from a Node image and install the pinned
+    // controller before baking the marker-gated start command.
+    "install:node-base",
   ])
 
   if (config.bootstrap.prepareCommands.some((command) => command.trim())) {
     flags.add("bootstrap:prepare-commands")
   }
 
-  // `bootstrap.installCommand` and `bootstrap.startCommand` are deprecated
-  // under the runtime-baked template design; they are accepted for config
-  // back-compat but no longer drive any runtime behavior. Intentionally no
-  // flag is emitted for them.
+  // `bootstrap.installCommand` and `bootstrap.startCommand` are deprecated and
+  // accepted only so older configs still load. Intentionally no provenance flag
+  // is emitted because they no longer affect runtime behavior.
 
   return [...flags]
 }
@@ -364,7 +335,7 @@ export function validatePluginOptions(raw: unknown): E2BWorkspacePluginOptions |
     }
   }
 
-  requireString(options.template, "template", false)
+  requireString(options.nodeVariant, "nodeVariant", false)
   requireString(options.projectPath, "projectPath", false)
   requirePositiveIntegerField(options.sandboxTimeoutMs, "sandboxTimeoutMs")
   requirePositiveIntegerField(options.serverPort, "serverPort")

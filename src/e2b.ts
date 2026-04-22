@@ -4,7 +4,6 @@ import { Sandbox } from "e2b"
 import { forgetSandboxCompatibility } from "./runtime.js"
 import { ensureManagedWorkspaceTemplate } from "./template.js"
 import type {
-  BaseTemplateFingerprint,
   NormalizedE2BWorkspaceConfig,
   PersistedWorkspaceCompatibility,
   PluginLogger,
@@ -16,9 +15,6 @@ const PROJECT_ID_METADATA_KEY = "opencodeProjectId"
 const WORKSPACE_API_VERSION_METADATA_KEY = "opencodeWorkspaceApiVersion"
 const RUNTIME_VERSION_METADATA_KEY = "opencodeRuntimeVersion"
 const FLAGS_METADATA_KEY = "opencodeFlags"
-const BASE_TEMPLATE_METADATA_KEY = "opencodeBaseTemplate"
-const BASE_TEMPLATE_ID_METADATA_KEY = "opencodeBaseTemplateId"
-const BASE_TEMPLATE_BUILD_ID_METADATA_KEY = "opencodeBaseTemplateBuildId"
 
 type WorkspaceSandboxRecord = {
   sandbox: Sandbox
@@ -42,7 +38,6 @@ export function buildSandboxMetadata(
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
   compatibility: PersistedWorkspaceCompatibility,
-  baseTemplate: BaseTemplateFingerprint,
 ): Record<string, string> {
   return {
     ...config.metadata,
@@ -51,9 +46,6 @@ export function buildSandboxMetadata(
     [WORKSPACE_API_VERSION_METADATA_KEY]: compatibility.workspaceApiVersion,
     [RUNTIME_VERSION_METADATA_KEY]: compatibility.runtimeVersion,
     [FLAGS_METADATA_KEY]: JSON.stringify(compatibility.flags),
-    [BASE_TEMPLATE_METADATA_KEY]: baseTemplate.requestedTemplate,
-    ...(baseTemplate.templateId ? { [BASE_TEMPLATE_ID_METADATA_KEY]: baseTemplate.templateId } : {}),
-    ...(baseTemplate.buildId ? { [BASE_TEMPLATE_BUILD_ID_METADATA_KEY]: baseTemplate.buildId } : {}),
   }
 }
 
@@ -77,23 +69,24 @@ export async function createWorkspaceSandbox(
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
   compatibility: PersistedWorkspaceCompatibility,
-  baseTemplate: BaseTemplateFingerprint,
   runtimeVersion: string,
+  pluginPackageVersion: string,
   logger?: PluginLogger,
 ): Promise<Sandbox> {
   const template = await ensureManagedWorkspaceTemplate(
     {
-      baseTemplate,
+      nodeVariant: config.nodeVariant,
       runtimeVersion,
       projectPath: config.projectPath,
       serverPort: config.serverPort,
+      pluginPackageVersion,
     },
     logger,
   )
 
   return Sandbox.create(template, {
     timeoutMs: config.sandboxTimeoutMs,
-    metadata: buildSandboxMetadata(info, config, compatibility, baseTemplate),
+    metadata: buildSandboxMetadata(info, config, compatibility),
     secure: config.secure,
     network: {
       allowPublicTraffic: config.network.allowPublicTraffic,
@@ -240,9 +233,6 @@ export function readSandboxCompatibility(metadata: Record<string, string>): Sand
     workspaceApiVersion: metadata[WORKSPACE_API_VERSION_METADATA_KEY],
     runtimeVersion: metadata[RUNTIME_VERSION_METADATA_KEY],
     flags: parseFlags(metadata[FLAGS_METADATA_KEY]),
-    baseTemplate: metadata[BASE_TEMPLATE_METADATA_KEY],
-    baseTemplateId: metadata[BASE_TEMPLATE_ID_METADATA_KEY],
-    baseTemplateBuildId: metadata[BASE_TEMPLATE_BUILD_ID_METADATA_KEY],
   }
 }
 

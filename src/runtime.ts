@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises"
+
 import { Sandbox } from "e2b"
 
 import { CURRENT_WORKSPACE_API_VERSION } from "./config.js"
@@ -21,6 +23,7 @@ const HEALTH_TIMEOUT_MS = 1_500
 const MINIMUM_SUPPORTED_RUNTIME_VERSION = "1.14.20"
 
 let installedRuntimeVersionPromise: Promise<string> | undefined
+let installedPluginVersionPromise: Promise<string> | undefined
 
 /**
  * Process-local cache of sandbox IDs that have already been confirmed
@@ -84,6 +87,21 @@ export async function resolveLocalRuntimeVersion(
     })
 
   return installedRuntimeVersionPromise
+}
+
+/**
+ * Read this plugin's own package version from the local package.json. The
+ * value is memoized for the process lifetime and fed into the managed-template
+ * alias hash so a plugin release can intentionally force a rebuild even when
+ * the pinned OpenCode runtime version is unchanged.
+ */
+export async function resolveLocalPluginVersion(): Promise<string> {
+  installedPluginVersionPromise ??= readInstalledPluginVersion().catch((error) => {
+    installedPluginVersionPromise = undefined
+    throw error
+  })
+
+  return installedPluginVersionPromise
 }
 
 /**
@@ -285,4 +303,18 @@ async function fetchRemoteRuntimeHealth(
  */
 function remoteHealthUrl(baseUrl: URL): URL {
   return new URL("/global/health", baseUrl)
+}
+
+/**
+ * Read and validate this package's declared version from package.json.
+ */
+async function readInstalledPluginVersion(): Promise<string> {
+  const packageJsonUrl = new URL("../package.json", import.meta.url)
+  const raw = await readFile(packageJsonUrl, "utf8")
+  const payload = JSON.parse(raw) as Partial<{ version: unknown }>
+  if (typeof payload.version !== "string" || payload.version.trim() === "") {
+    throw new Error(`Invalid plugin package version in ${packageJsonUrl.pathname}`)
+  }
+
+  return payload.version
 }

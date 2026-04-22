@@ -23,10 +23,10 @@ import {
 import {
   assertWorkspaceCompatibility,
   forgetSandboxCompatibility,
+  resolveLocalPluginVersion,
   resolveLocalRuntimeVersion,
 } from "./runtime.js"
 import { errorMessage } from "./shared.js"
-import { describeBaseTemplateMismatch, resolveBaseTemplateFingerprint } from "./template.js"
 import type { E2BWorkspacePluginOptions, PluginLogger, RuntimeWorkspaceAdaptor } from "./types.js"
 import { uploadLocalSnapshot } from "./upload.js"
 
@@ -128,7 +128,7 @@ async function configureWorkspace(
     workspaceID: info.id,
     branch: info.branch ?? undefined,
     projectPath: config.projectPath,
-    template: config.template,
+    nodeVariant: config.nodeVariant,
   })
   const runtimeVersion = await resolveLocalRuntimeVersion(serverUrl, logger)
 
@@ -164,7 +164,7 @@ async function createWorkspace(
     workspaceID: info.id,
     localDirectory,
     projectPath: config.projectPath,
-    template: config.template,
+    nodeVariant: config.nodeVariant,
   })
 
   try {
@@ -177,9 +177,6 @@ async function createWorkspace(
     stage = "resolve-compatibility"
     const compatibility = resolveWorkspaceCompatibility(info, config, runtimeVersion)
 
-    stage = "resolve-base-template"
-    const baseTemplate = await resolveBaseTemplateFingerprint(config.template, logger)
-
     stage = "find-existing-sandbox"
     const existingRecord = await findWorkspaceSandboxRecord(info, config)
     if (existingRecord) {
@@ -191,10 +188,6 @@ async function createWorkspace(
       stage = "validate-existing-sandbox"
       try {
         const sandboxCompatibility = readSandboxCompatibility(existingRecord.metadata)
-        const baseTemplateMismatch = describeBaseTemplateMismatch(baseTemplate, sandboxCompatibility)
-        if (baseTemplateMismatch) {
-          throw new Error(baseTemplateMismatch)
-        }
 
         await assertWorkspaceCompatibility({
           workspaceID: info.id,
@@ -226,9 +219,13 @@ async function createWorkspace(
       }
     }
 
+    stage = "resolve-plugin-version"
+    const pluginPackageVersion = await resolveLocalPluginVersion()
+
     stage = "create-sandbox"
     await logger?.info("create workspace provisioning sandbox", {
       workspaceID: info.id,
+      pluginPackageVersion,
     })
     // A brand-new sandbox must be tagged with the current runtime's
     // compatibility data, not the prior (potentially killed) sandbox's
@@ -240,8 +237,8 @@ async function createWorkspace(
       info,
       config,
       freshCompatibility,
-      baseTemplate,
       runtimeVersion,
+      pluginPackageVersion,
       logger,
     )
 

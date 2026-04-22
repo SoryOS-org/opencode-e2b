@@ -43,7 +43,7 @@ export type E2BUploadOptions = {
  * refine behavior without changing the high level package structure.
  */
 export type E2BWorkspacePluginOptions = PluginOptions & {
-  template?: string
+  nodeVariant?: string
   sandboxTimeoutMs?: number
   projectPath?: string
   serverPort?: number
@@ -61,7 +61,7 @@ export type E2BWorkspacePluginOptions = PluginOptions & {
  */
 export type NormalizedE2BWorkspaceConfig = {
   workspaceApiVersion: string
-  template: string
+  nodeVariant: string
   sandboxTimeoutMs: number
   projectPath: string
   serverPort: number
@@ -93,24 +93,12 @@ export type PersistedWorkspaceCompatibility = {
  */
 export type PersistedWorkspaceExtra = {
   e2b: PersistedWorkspaceCompatibility & {
-    template: string
+    nodeVariant: string
     projectPath: string
     serverPort: number
     secure: boolean
     metadata: Record<string, string>
   }
-}
-
-/**
- * Fingerprint of the upstream E2B base template that the plugin derives its
- * managed idle-start template from. The requested template string stays human
- * readable, while the resolved template/build IDs let us detect when the
- * provider has published a newer build behind the same alias.
- */
-export type BaseTemplateFingerprint = {
-  requestedTemplate: string
-  templateId?: string
-  buildId?: string
 }
 
 /**
@@ -153,7 +141,4 @@ export type SandboxMetadataCompatibility = {
   workspaceApiVersion?: string
   runtimeVersion?: string
   flags: string[]
-  baseTemplate?: string
-  baseTemplateId?: string
-  baseTemplateBuildId?: string
 }

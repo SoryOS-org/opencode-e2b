@@ -37,16 +37,26 @@ export const E2BWorkspacePlugin: Plugin = async (
   { client, directory, experimental_workspace, serverUrl },
   rawOptions,
 ) => {
+  const logger = createPluginLogger(client)
+  let options: E2BWorkspacePluginOptions | undefined
+
   // OpenCode loads plugin options from user-controlled JSON, so we shape-check
   // them before any of the runtime code trusts field types. Failing here
   // surfaces the problem at plugin load time rather than deep inside an E2B
   // SDK call during workspace creation.
-  const options = validatePluginOptions(rawOptions)
-  // Fail fast if the E2B credential is missing. The SDK would otherwise throw
-  // a generic AuthenticationError only when the first Sandbox.create call
-  // runs, by which point the user has already committed to the workflow.
-  assertE2BApiKeyAvailable()
-  const logger = createPluginLogger(client)
+  try {
+    options = validatePluginOptions(rawOptions)
+    // Fail fast if the E2B credential is missing. The SDK would otherwise throw
+    // a generic AuthenticationError only when the first Sandbox.create call
+    // runs, by which point the user has already committed to the workflow.
+    assertE2BApiKeyAvailable()
+  } catch (error) {
+    await logger.error("plugin load failed", {
+      error: errorMessage(error),
+    })
+    throw error
+  }
+
   const getLocalRuntimeVersion = createLazyRuntimeVersionResolver(serverUrl, logger)
 
   await logger.info("registering workspace adaptor", {

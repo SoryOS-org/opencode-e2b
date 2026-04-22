@@ -66,11 +66,13 @@ export async function resolveLocalRuntimeVersion(
 }
 
 /**
- * Probe the actual OpenCode version running inside the sandbox. The server
- * health endpoint is preferred, with a CLI fallback in case the server is up
- * but not yet exposing the health shape we expect. When the sandbox gateway
- * requires an access token (`secure: true`) the caller passes it via
- * `headers` so the HTTPS round-trip isn't rejected at the edge.
+ * Probe the actual OpenCode version running inside the sandbox via the same
+ * `/global/health` endpoint used for local controller detection. `create`
+ * already gates on that endpoint before a workspace reaches `target()`, so any
+ * sandbox that survives to this check is expected to be health-responsive.
+ * When the sandbox gateway requires an access token (`secure: true`) the
+ * caller passes it via `headers` so the HTTPS round-trip isn't rejected at the
+ * edge.
  */
 export async function probeRemoteRuntimeVersion(params: {
   baseUrl: URL
@@ -79,24 +81,12 @@ export async function probeRemoteRuntimeVersion(params: {
   logger?: PluginLogger
   headers?: Record<string, string>
 }): Promise<string> {
-  try {
-    const health = await fetchRemoteRuntimeHealth(params.baseUrl, {
-      logger: params.logger,
-      target: "remote-workspace",
-      headers: params.headers,
-    })
-    return health.version
-  } catch (healthError) {
-    try {
-      return await probeRemoteCliVersion(params.sandbox, params.projectPath)
-    } catch (cliError) {
-      const healthMessage = errorMessage(healthError)
-      const cliMessage = errorMessage(cliError)
-      throw new Error(
-        `Failed to determine remote OpenCode version from ${remoteHealthUrl(params.baseUrl)} or \`opencode --version\`: ${healthMessage}; ${cliMessage}`,
-      )
-    }
-  }
+  const health = await fetchRemoteRuntimeHealth(params.baseUrl, {
+    logger: params.logger,
+    target: "remote-workspace",
+    headers: params.headers,
+  })
+  return health.version
 }
 
 /**
@@ -221,34 +211,5 @@ async function fetchRemoteRuntimeHealth(
  */
 function remoteHealthUrl(baseUrl: URL): URL {
   return new URL("/global/health", baseUrl)
-}
-
-/**
- * Fallback runtime probe that shells into the sandbox when the remote server is
- * reachable but does not expose the expected health payload.
- */
-async function probeRemoteCliVersion(sandbox: Sandbox, projectPath: string): Promise<string> {
-  const result = await sandbox.commands.run("opencode --version", {
-    cwd: projectPath,
-  })
-  if (result.exitCode !== 0) {
-    const stderr = result.stderr.trim()
-    throw new Error(stderr || "Remote version command failed")
-  }
-
-  const version = extractVersion(result.stdout)
-  if (!version) {
-    throw new Error(`Could not parse remote OpenCode version from ${JSON.stringify(result.stdout.trim())}`)
-  }
-
-  return version
-}
-
-/**
- * Extract a semver-like version from the command output.
- */
-function extractVersion(output: string): string | undefined {
-  const match = output.match(/\b\d+\.\d+\.\d+(?:[-+][^\s]+)?\b/)
-  return match?.[0]
 }
 

@@ -62,9 +62,9 @@ export const E2BWorkspacePlugin: Plugin = async (
     directory,
     serverUrl: serverUrl.toString(),
   })
-  // Surface any legacy bootstrap.* options the user still has configured
-  // once at load time, so they don't get silently ignored workspace after
-  // workspace under the runtime-baked template design.
+  // Warn once per process if deprecated bootstrap.* options are set; their
+  // values are validated for schema compatibility but no longer affect
+  // runtime behavior.
   await warnDeprecatedBootstrapOptions(options, logger)
 
   const adaptor: RuntimeWorkspaceAdaptor = {

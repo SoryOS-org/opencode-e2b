@@ -225,8 +225,7 @@ export async function removeWorkspaceSandbox(
 
 /**
  * Parse workspace compatibility fields back out of raw E2B metadata. Invalid
- * or missing values are treated as absent so older sandboxes remain
- * inspectable.
+ * or missing values are tolerated and returned as absent.
  */
 export function readSandboxCompatibility(metadata: Record<string, string>): SandboxMetadataCompatibility {
   return {

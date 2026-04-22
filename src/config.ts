@@ -77,15 +77,10 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
 }
 
 /**
- * Emit a one-time deprecation warning for any `bootstrap` options the user
- * has set that no longer affect runtime behavior. Called from plugin load so
- * the warning surfaces once per process (not per workspace create).
- *
- * The managed template now installs the pinned opencode controller at build
- * time and launches it via a marker-gated start command. Legacy options
- * remain schema-valid so old config files keep loading, but carrying their
- * values silently would be misleading — users who set them expect them to
- * run.
+ * Warn once per process when deprecated `bootstrap` options are set in the
+ * user config. Their values are schema-validated so loading succeeds, but
+ * they no longer affect runtime behavior — carrying them silently would be
+ * misleading to users who expect them to run.
  */
 export async function warnDeprecatedBootstrapOptions(
   options: E2BWorkspacePluginOptions | undefined,
@@ -96,7 +91,7 @@ export async function warnDeprecatedBootstrapOptions(
 
   if (installCommand) {
     await logger?.warn(
-      "bootstrap.installCommand is deprecated and ignored; the pinned opencode runtime is installed at managed-template build time",
+      "bootstrap.installCommand is deprecated and ignored; opencode is installed during managed-template build.",
       {
         installCommand,
       },
@@ -105,7 +100,7 @@ export async function warnDeprecatedBootstrapOptions(
 
   if (startCommand) {
     await logger?.warn(
-      "bootstrap.startCommand is deprecated and ignored; the managed template bakes a marker-gated start command that execs the installed opencode",
+      "bootstrap.startCommand is deprecated and ignored; the managed template runs a marker-gated start command.",
       {
         startCommand,
       },
@@ -188,8 +183,8 @@ export function resolveWorkspaceCompatibility(
  * Build compatibility data that reflects the current plugin + controller
  * state, ignoring whatever was previously persisted. Use this whenever a
  * sandbox is provisioned fresh (first create, or replacement after an
- * incompatible one was killed) so its metadata matches the code that just
- * wrote it, not a prior generation that no longer exists.
+ * incompatible one was killed) so its metadata matches the code that wrote
+ * it.
  */
 export function buildFreshCompatibility(
   config: NormalizedE2BWorkspaceConfig,
@@ -251,9 +246,9 @@ function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">
     flags.add("bootstrap:prepare-commands")
   }
 
-  // `bootstrap.installCommand` and `bootstrap.startCommand` are deprecated and
-  // accepted only so older configs still load. Intentionally no provenance flag
-  // is emitted because they no longer affect runtime behavior.
+  // `bootstrap.installCommand` and `bootstrap.startCommand` are accepted for
+  // schema compatibility but no longer affect runtime behavior, so no
+  // provenance flag is emitted.
 
   return [...flags]
 }

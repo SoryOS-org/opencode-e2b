@@ -13,9 +13,9 @@ export type E2BNetworkOptions = {
 }
 
 /**
- * Bootstrap commands for preparing and starting OpenCode inside the sandbox.
- * These remain command-string based for now because the eventual bootstrap
- * strategy may vary by template, package manager, or internal install flow.
+ * Bootstrap commands run inside the sandbox during `adaptor.create`.
+ * `prepareCommands` is the supported extension point; `installCommand` and
+ * `startCommand` are accepted for schema compatibility but ignored.
  */
 export type E2BBootstrapOptions = {
   prepareCommands?: string[]
@@ -134,8 +134,9 @@ export type PluginLogger = {
 
 /**
  * Parsed view of the workspace-compatibility fields stored in E2B sandbox
- * metadata. Fields are optional because older sandboxes may predate some
- * keys, and an unknown flag set should never be confused with an empty set.
+ * metadata. Fields are optional because metadata may be absent on sandboxes
+ * that didn't set every key; an unknown flag set should never be confused
+ * with an empty set.
  */
 export type SandboxMetadataCompatibility = {
   workspaceApiVersion?: string

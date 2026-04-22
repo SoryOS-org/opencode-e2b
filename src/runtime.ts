@@ -9,6 +9,17 @@ import type {
 } from "./types.js"
 
 const HEALTH_TIMEOUT_MS = 1_500
+
+/**
+ * Inclusive OpenCode runtime floor below which this plugin refuses to load or
+ * reuse sandboxes. Bumping this forces every running controller and every
+ * cached sandbox to be re-validated after upgrade.
+ *
+ * `workspaceApiVersion` remains the true breaking-change gate; this floor is a
+ * safety rail for too-old runtimes, not a compatibility contract.
+ */
+const MINIMUM_SUPPORTED_RUNTIME_VERSION = "1.14.20"
+
 let installedRuntimeVersionPromise: Promise<string> | undefined
 
 /**
@@ -47,8 +58,9 @@ export function forgetSandboxCompatibility(sandboxId: string): void {
  * health endpoint — together they produce the (local, remote) pair that
  * drives the compatibility check.
  *
- * The resolved version is memoized for the process lifetime. A failure
- * clears the cache so the next call re-probes the controller.
+ * The resolved version is memoized for the process lifetime. A failure,
+ * including a controller version below the supported floor, clears the cache so
+ * the next call re-probes the controller.
  */
 export async function resolveLocalRuntimeVersion(
   serverUrl: URL,
@@ -57,10 +69,19 @@ export async function resolveLocalRuntimeVersion(
   installedRuntimeVersionPromise ??= fetchRemoteRuntimeHealth(serverUrl, {
     target: "local-controller",
     logger,
-  }).then((health) => health.version).catch((error) => {
-    installedRuntimeVersionPromise = undefined
-    throw error
   })
+    .then((health) => {
+      assertRuntimeMeetsFloor(
+        health.version,
+        MINIMUM_SUPPORTED_RUNTIME_VERSION,
+        "local controller",
+      )
+      return health.version
+    })
+    .catch((error) => {
+      installedRuntimeVersionPromise = undefined
+      throw error
+    })
 
   return installedRuntimeVersionPromise
 }
@@ -90,9 +111,9 @@ export async function probeRemoteRuntimeVersion(params: {
 }
 
 /**
- * Fail fast when the current plugin cannot safely interpret or reuse a sandbox
- * created under a different workspace compatibility model or OpenCode runtime
- * version.
+ * Fail fast when the current plugin cannot safely interpret or reuse a sandbox.
+ * `workspaceApiVersion` remains the breaking-change gate; the runtime floor is
+ * a backstop that rejects too-old controllers or sandboxes.
  */
 export async function assertWorkspaceCompatibility(params: {
   workspaceID: string
@@ -128,24 +149,77 @@ export async function assertWorkspaceCompatibility(params: {
     logger: undefined,
     headers: params.headers,
   })
-  if (remoteRuntimeVersion === params.localRuntimeVersion) {
-    compatibilityCache.set(params.sandbox.sandboxId, {
-      localRuntimeVersion: params.localRuntimeVersion,
-    })
-    return
+  assertRuntimeMeetsFloor(
+    remoteRuntimeVersion,
+    MINIMUM_SUPPORTED_RUNTIME_VERSION,
+    "remote sandbox",
+  )
+
+  compatibilityCache.set(params.sandbox.sandboxId, {
+    localRuntimeVersion: params.localRuntimeVersion,
+  })
+}
+
+/**
+ * Parse a runtime version into its numeric semver triple, ignoring prerelease
+ * and build metadata while rejecting non-semver strings.
+ */
+function parseSemver(version: string): { major: number; minor: number; patch: number } {
+  const match = /^(\d+)\.(\d+)\.(\d+)(.*)$/.exec(version)
+  if (!match) {
+    throw new Error("version must begin with numeric MAJOR.MINOR.PATCH")
   }
 
-  const declaredRuntimeVersion =
-    params.sandboxCompatibility.runtimeVersion ?? params.persistedCompatibility.runtimeVersion
-  const declaredFlags =
-    params.sandboxCompatibility.flags.length ? params.sandboxCompatibility.flags : params.persistedCompatibility.flags
-  const declaredRuntimeClause = declaredRuntimeVersion
-    ? ` Sandbox metadata recorded ${declaredRuntimeVersion}.`
-    : ""
-  const flagsClause = declaredFlags.length ? ` Flags: ${declaredFlags.join(", ")}.` : ""
+  const [, major, minor, patch, suffix] = match
+  if (suffix.length > 0 && !suffix.startsWith("-") && !suffix.startsWith("+")) {
+    throw new Error("version must begin with numeric MAJOR.MINOR.PATCH")
+  }
+
+  return {
+    major: Number(major),
+    minor: Number(minor),
+    patch: Number(patch),
+  }
+}
+
+/**
+ * Return whether a runtime version's numeric semver triple is at or above the
+ * configured floor.
+ */
+function meetsFloor(version: string, floor: string): boolean {
+  const parsedVersion = parseSemver(version)
+  const parsedFloor = parseSemver(floor)
+
+  if (parsedVersion.major !== parsedFloor.major) {
+    return parsedVersion.major > parsedFloor.major
+  }
+  if (parsedVersion.minor !== parsedFloor.minor) {
+    return parsedVersion.minor > parsedFloor.minor
+  }
+  return parsedVersion.patch >= parsedFloor.patch
+}
+
+/**
+ * Assert that either the local controller or a remote sandbox is running an
+ * OpenCode version at or above the supported floor.
+ */
+function assertRuntimeMeetsFloor(
+  version: string,
+  floor: string,
+  side: "local controller" | "remote sandbox",
+): void {
+  try {
+    if (meetsFloor(version, floor)) {
+      return
+    }
+  } catch (error) {
+    throw new Error(
+      `Failed to parse ${side} OpenCode version "${version}": ${errorMessage(error)}`,
+    )
+  }
 
   throw new Error(
-    `Workspace ${params.workspaceID} is running OpenCode ${remoteRuntimeVersion}, but the local controller is ${params.localRuntimeVersion}.${declaredRuntimeClause}${flagsClause}`,
+    `${side} is running OpenCode ${version}, which is below the minimum supported ${floor}. Upgrade the ${side} to continue using the e2b workspace plugin.`,
   )
 }
 
@@ -212,4 +286,3 @@ async function fetchRemoteRuntimeHealth(
 function remoteHealthUrl(baseUrl: URL): URL {
   return new URL("/global/health", baseUrl)
 }
-

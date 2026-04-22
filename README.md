@@ -56,16 +56,18 @@ Missing flags should be treated as `unknown`, not `false`, so older sandboxes ca
 
 ## Version handling
 
-- The local OpenCode runtime version is read from this plugin's `package.json` (`@opencode-ai/plugin` dependency).
-- That same version is baked into the managed template at build time via `npm install -g opencode-ai@<version>`, so every sandbox spawned from the template ships the matching controller.
-- The remote sandbox version is probed from `GET /global/health` on the remote OpenCode server, with `opencode --version` as a fallback.
+- **Minimum supported OpenCode version: `1.14.20`.** Both the local controller and any reused sandbox's baked runtime must meet this floor. The plugin refuses to register against an older local controller, and refuses to attach to a pre-floor sandbox (which is then replaced on next create).
+- The local OpenCode runtime version is probed at plugin load via `GET /global/health` against `PluginInput.serverUrl`, which is the running local controller. The probe also gates the floor check, so a missing or too-old controller fails fast at registration time.
+- The local version is baked into the managed template at build time via `npm install -g opencode-ai@<version>`, so every sandbox spawned fresh from the template ships a floor-compliant controller by construction.
+- The remote sandbox version is probed from `GET /global/health` on the remote OpenCode server. There is no CLI fallback; any sandbox reaching `target()` has already cleared the same health endpoint during `create()`'s readiness wait.
+- Above the floor, the local and remote versions do not need to match. The `workspaceApiVersion` check remains the real breaking-change gate.
 - The plugin refuses to attach to a sandbox when:
   - `opencodeWorkspaceApiVersion` does not match the current workspace compatibility version
-  - the probed remote OpenCode version does not match the local OpenCode version
+  - the probed remote OpenCode version is below `1.14.20` (or unparseable)
   - the sandbox's base-template build differs from the one the current config now resolves to
-  - the sandbox was provisioned under the legacy idle-start design
+  - the sandbox was provisioned under the legacy idle-start design, or under rev-2 without env-injected startup
 
-That keeps the first version conservative: it detects mismatches clearly before we add in-place upgrade or migration flows.
+Bumping the floor requires a new plugin release; the value lives as a single constant in `src/runtime.ts`.
 
 ## Usage
 

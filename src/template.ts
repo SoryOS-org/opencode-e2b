@@ -11,7 +11,7 @@ import type { PluginLogger } from "./types.js"
  * port, and this plugin's own package version. Any change to those inputs
  * produces a fresh alias and therefore a fresh template build.
  */
-const MANAGED_TEMPLATE_PREFIX = "opencode-e2b-"
+export const MANAGED_TEMPLATE_PREFIX = "opencode-e2b-"
 
 /**
  * Absolute path inside the sandbox where the plugin writes an empty file to

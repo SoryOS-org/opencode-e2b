@@ -69,6 +69,40 @@ Missing flags should be treated as `unknown`, not `false`.
     version (the breaking-change gate for protocol changes), and
   - the probed remote OpenCode version meeting the floor.
 
+## Template garbage collection
+
+The plugin publishes a new managed template alias every time the pinned
+OpenCode runtime version, Node image variant, project path, server port,
+or plugin version changes. To keep these from accumulating in your E2B
+account, a best-effort TTL-based sweep runs at plugin load and after
+each `adaptor.remove`.
+
+A managed template is eligible for deletion when:
+
+- its alias starts with `opencode-e2b-` (owned by this plugin), and
+- its `buildStatus` is `ready`, and
+- the most recent of `lastSpawnedAt`, `updatedAt`, and `createdAt` is
+  older than the configured TTL (default 72h).
+
+GC never throws; failures are logged via the plugin logger and the pass
+continues. Configure via the `templateGc` option:
+
+```json
+{
+  "templateGc": {
+    "enabled": true,
+    "ttlMs": 259200000,
+    "cooldownMs": 600000
+  }
+}
+```
+
+- `enabled` (default `true`) - set `false` to skip every pass.
+- `ttlMs` (default `259_200_000`, i.e. 72h; clamped to >=1h) - age after
+  which an idle managed template is a deletion candidate.
+- `cooldownMs` (default `600_000`, i.e. 10 min) - minimum gap between
+  passes initiated by the same OpenCode process.
+
 ## Usage
 
 1. Install dependencies:

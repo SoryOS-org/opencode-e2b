@@ -20,6 +20,7 @@ import {
   sandboxBaseUrl,
   sandboxTargetHeaders,
 } from "./e2b.js"
+import { runTemplateGC } from "./gc.js"
 import {
   assertWorkspaceCompatibility,
   forgetSandboxCompatibility,
@@ -66,6 +67,7 @@ export const E2BWorkspacePlugin: Plugin = async (
   // values are validated for schema compatibility but no longer affect
   // runtime behavior.
   await warnDeprecatedBootstrapOptions(options, logger)
+  const gcConfig = normalizeOptions(options).templateGc
 
   const adaptor: RuntimeWorkspaceAdaptor = {
     name: "E2B Sandbox",
@@ -79,6 +81,9 @@ export const E2BWorkspacePlugin: Plugin = async (
     async remove(info) {
       const config = resolveWorkspaceConfig(info, options)
       await removeWorkspaceSandbox(info, config)
+      if (gcConfig.enabled) {
+        void runTemplateGC(gcConfig, logger).catch(() => {})
+      }
     },
     async target(info) {
       const localRuntimeVersion = await resolveLocalRuntimeVersion(serverUrl, logger)
@@ -107,6 +112,10 @@ export const E2BWorkspacePlugin: Plugin = async (
   }
 
   experimental_workspace.register("e2b", adaptor as never)
+
+  if (gcConfig.enabled) {
+    void runTemplateGC(gcConfig, logger).catch(() => {})
+  }
 
   return {}
 }

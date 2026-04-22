@@ -38,6 +38,28 @@ export type E2BUploadOptions = {
 }
 
 /**
+ * Garbage collection of managed templates this plugin published. Runs
+ * best-effort at plugin load and after workspace teardown; never blocks the
+ * caller.
+ */
+export type E2BTemplateGCOptions = {
+  /** When false, GC is disabled entirely. Default true. */
+  enabled?: boolean
+  /**
+   * A managed template is eligible for deletion only if its freshness (max of
+   * lastSpawnedAt / updatedAt / createdAt) is older than this. Default 72h
+   * (3 * 24 * 60 * 60 * 1000). Values below 1h are clamped up.
+   */
+  ttlMs?: number
+  /**
+   * Minimum wall-clock gap between GC passes initiated by this process.
+   * Default 10 minutes. Prevents a remove-heavy session from hammering the
+   * templates endpoint.
+   */
+  cooldownMs?: number
+}
+
+/**
  * Public plugin options accepted from the OpenCode config file.
  * These are kept open ended and mostly provider-facing so later work can
  * refine behavior without changing the high level package structure.
@@ -51,6 +73,7 @@ export type E2BWorkspacePluginOptions = PluginOptions & {
   network?: E2BNetworkOptions
   bootstrap?: E2BBootstrapOptions
   upload?: E2BUploadOptions
+  templateGc?: E2BTemplateGCOptions
   metadata?: Record<string, string>
 }
 
@@ -69,6 +92,7 @@ export type NormalizedE2BWorkspaceConfig = {
   network: Required<E2BNetworkOptions>
   bootstrap: Required<E2BBootstrapOptions>
   upload: Required<E2BUploadOptions>
+  templateGc: Required<E2BTemplateGCOptions>
   metadata: Record<string, string>
   flags: string[]
 }

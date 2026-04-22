@@ -7,6 +7,11 @@ import type {
   PersistedWorkspaceExtra,
   PluginLogger,
 } from "./types.js"
+import {
+  DEFAULT_TEMPLATE_GC_COOLDOWN_MS,
+  DEFAULT_TEMPLATE_GC_TTL_MS,
+  MIN_TEMPLATE_GC_TTL_MS,
+} from "./gc.js"
 
 export const CURRENT_WORKSPACE_API_VERSION = "1"
 const DEFAULT_NODE_VARIANT = "22-slim"
@@ -32,6 +37,13 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
   const waitForTimeoutMs =
     requirePositiveInteger(options?.bootstrap?.waitForTimeoutMs, "bootstrap.waitForTimeoutMs") ?? 30_000
   const batchSize = requirePositiveInteger(options?.upload?.batchSize, "upload.batchSize") ?? 100
+  const templateGcTtlMs = Math.max(
+    requirePositiveInteger(options?.templateGc?.ttlMs, "templateGc.ttlMs") ?? DEFAULT_TEMPLATE_GC_TTL_MS,
+    MIN_TEMPLATE_GC_TTL_MS,
+  )
+  const templateGcCooldownMs =
+    requirePositiveInteger(options?.templateGc?.cooldownMs, "templateGc.cooldownMs") ??
+    DEFAULT_TEMPLATE_GC_COOLDOWN_MS
 
   const config = {
     workspaceApiVersion: CURRENT_WORKSPACE_API_VERSION,
@@ -65,6 +77,11 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
       includeDotGit: options?.upload?.includeDotGit ?? false,
       batchSize,
       followSymlinks: options?.upload?.followSymlinks ?? false,
+    },
+    templateGc: {
+      enabled: options?.templateGc?.enabled !== false,
+      ttlMs: templateGcTtlMs,
+      cooldownMs: templateGcCooldownMs,
     },
     metadata: options?.metadata ?? {},
     flags: [] as string[],
@@ -374,6 +391,18 @@ export function validatePluginOptions(raw: unknown): E2BWorkspacePluginOptions |
       requireBoolean(up.includeDotGit, "upload.includeDotGit")
       requirePositiveIntegerField(up.batchSize, "upload.batchSize")
       requireBoolean(up.followSymlinks, "upload.followSymlinks")
+    }
+  }
+
+  const templateGc = options.templateGc
+  if (templateGc !== undefined) {
+    if (templateGc === null || typeof templateGc !== "object" || Array.isArray(templateGc)) {
+      errors.push("templateGc must be an object")
+    } else {
+      const gc = templateGc as Record<string, unknown>
+      requireBoolean(gc.enabled, "templateGc.enabled")
+      requirePositiveIntegerField(gc.ttlMs, "templateGc.ttlMs")
+      requirePositiveIntegerField(gc.cooldownMs, "templateGc.cooldownMs")
     }
   }
 

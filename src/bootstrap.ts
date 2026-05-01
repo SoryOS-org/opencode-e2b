@@ -96,38 +96,21 @@ async function writeProjectMarker(
   await sandbox.files.write(posix.join(config.projectPath, ".git", "opencode"), info.projectID)
 }
 
-/**
- * Render the per-workspace env map into a POSIX-sh file and write it to the
- * sandbox. The baked template's start command sources this file (with
- * `set -a` / `.` / `set +a`) before exec'ing opencode, so every non-empty
- * entry becomes an exported environment variable visible to the server.
- *
- * Concretely this is the delivery channel for the envs OpenCode passes to
- * `adaptor.create(config, env)`:
- *   - OPENCODE_WORKSPACE_ID
- *   - OPENCODE_EXPERIMENTAL_WORKSPACES
- *   - OPENCODE_AUTH_CONTENT
- *   - OTEL_EXPORTER_OTLP_*
- *
- * `Sandbox.create({envs})` only applies to subsequent `commands.run` calls,
- * not to the template's init command — without this file the server would
- * start missing those envs and, most importantly, run with sync disabled.
- *
- * Values are single-quoted with every embedded `'` replaced by `'\''` so
- * arbitrary payloads (including JSON blobs with quotes and newlines) round-
- * trip into the child environment unmodified. `undefined` values are
- * filtered out so we never emit `export KEY='undefined'`. Only the set of
- * keys is logged — the values may contain auth material.
- */
 async function writeRuntimeEnvFile(
   sandbox: Sandbox,
   env: Record<string, string | undefined>,
   logger?: PluginLogger,
 ): Promise<void> {
-  const entries = Object.entries(env).filter(
-    (entry): entry is [string, string] => typeof entry[1] === "string",
-  )
+  await sandbox.files.write(RUNTIME_ENV_FILE, renderRuntimeEnvFile(env))
 
+  await logger?.info("runtime env file written", {
+    envPath: RUNTIME_ENV_FILE,
+    keys: Object.keys(filterRuntimeEnv(env)),
+  })
+}
+
+export function renderRuntimeEnvFile(env: Record<string, string | undefined>): string {
+  const entries = Object.entries(filterRuntimeEnv(env))
   const lines = [
     "# Written by opencode-e2b bootstrap; sourced by the managed template start command.",
     "# Do not edit: regenerated on every workspace create.",
@@ -135,12 +118,13 @@ async function writeRuntimeEnvFile(
     "",
   ]
 
-  await sandbox.files.write(RUNTIME_ENV_FILE, lines.join("\n"))
+  return lines.join("\n")
+}
 
-  await logger?.info("runtime env file written", {
-    envPath: RUNTIME_ENV_FILE,
-    keys: entries.map(([key]) => key),
-  })
+function filterRuntimeEnv(env: Record<string, string | undefined>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  )
 }
 
 /**
@@ -252,4 +236,3 @@ async function runCheckedCommand(sandbox: Sandbox, command: string, cwd?: string
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms))
 }
-

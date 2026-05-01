@@ -4,12 +4,18 @@ import {
   buildPersistedExtra,
   defaultWorkspaceName,
   normalizeOptions,
+  resolveWorkspaceCompatibility,
   resolveWorkspaceConfig,
 } from "./config.js"
-import { assertE2BApiKeyAvailable } from "./credentials.js"
-import { removeWorkspaceSandbox } from "./e2b.js"
+import {
+  readSandboxCompatibility,
+  removeWorkspaceSandbox,
+  requireWorkspaceSandboxRecord,
+  sandboxBaseUrl,
+  sandboxTargetHeaders,
+} from "./e2b.js"
 import { runTemplateGC } from "./gc.js"
-import { resolveLocalRuntimeVersion } from "./runtime.js"
+import { assertWorkspaceCompatibility, resolveLocalRuntimeVersion } from "./runtime.js"
 import type {
   E2BWorkspacePluginOptions,
   NormalizedE2BWorkspaceConfig,
@@ -17,7 +23,6 @@ import type {
   RuntimeWorkspaceAdaptor,
 } from "./types.js"
 import { createWorkspace } from "./workspace-create.js"
-import { resolveWorkspaceTarget } from "./workspace-target.js"
 
 type WorkspaceAdaptorDeps = {
   directory: string
@@ -99,4 +104,44 @@ async function configureWorkspace(
     directory: config.projectPath,
     extra: buildPersistedExtra(config, runtimeVersion),
   }
+}
+
+async function resolveWorkspaceTarget(params: {
+  info: WorkspaceInfo
+  options: E2BWorkspacePluginOptions | undefined
+  serverUrl: URL
+  logger: PluginLogger
+}): Promise<{ type: "remote"; url: URL; headers?: HeadersInit }> {
+  const localRuntimeVersion = await resolveLocalRuntimeVersion(params.serverUrl, params.logger)
+  const config = resolveWorkspaceConfig(params.info, params.options)
+  const compatibility = resolveWorkspaceCompatibility(params.info, config, localRuntimeVersion)
+  const record = await requireWorkspaceSandboxRecord(params.info, config)
+  const baseUrl = sandboxBaseUrl(record.sandbox, config)
+  const headers = sandboxTargetHeaders(record.sandbox, config)
+
+  await assertWorkspaceCompatibility({
+    workspaceID: params.info.id,
+    localRuntimeVersion,
+    persistedCompatibility: compatibility,
+    sandboxCompatibility: readSandboxCompatibility(record.metadata),
+    sandbox: record.sandbox,
+    baseUrl,
+    headers,
+  })
+
+  return {
+    type: "remote",
+    url: baseUrl,
+    ...(headers ? { headers } : {}),
+  }
+}
+
+function assertE2BApiKeyAvailable(env: NodeJS.ProcessEnv = process.env): void {
+  const key = env.E2B_API_KEY
+  if (key && key.trim() !== "") return
+
+  throw new Error(
+    "E2B_API_KEY is not set. Export it in your shell (or OpenCode launch env) " +
+      "before enabling the e2b workspace plugin. Get a key at https://e2b.dev/dashboard.",
+  )
 }

@@ -5,6 +5,7 @@ This repository contains a TypeScript plugin package for OpenCode's experimental
 ## Current shape
 
 - `src/index.ts`: plugin entrypoint and workspace adaptor registration.
+- `src/workspace.ts`: OpenCode workspace adaptor implementation.
 - `src/config.ts`: option normalization and persisted workspace config.
 - `src/e2b.ts`: sandbox creation, lookup, targeting, and teardown.
 - `src/upload.ts`: local project snapshot collection and upload pipeline.
@@ -149,6 +150,7 @@ OPENCODE_EXPERIMENTAL_WORKSPACES=true opencode
 - Per-workspace envs OpenCode delivers via `adaptor.create(config, env)` — `OPENCODE_WORKSPACE_ID`, `OPENCODE_EXPERIMENTAL_WORKSPACES`, `OPENCODE_AUTH_CONTENT`, `OTEL_EXPORTER_OTLP_*` — are written to `/tmp/.opencode-e2b.env` in POSIX-sh `export KEY='value'` form before the bootstrap-ready marker is touched. The baked start command sources that file so the envs reach `opencode serve`. The on-disk env file is required because E2B's `Sandbox.create({envs})` only applies to subsequent `sandbox.commands.run` calls, not to the template's init command.
 - The managed template alias is keyed by `nodeVariant`, pinned runtime version, project path, server port, and this plugin's own package version. Changing any of those produces a new alias and triggers a fresh template build on next use.
 - The plugin defaults to public sandbox traffic for the remote workspace URL.
+- When `secure: true` is enabled, target requests include the E2B sandbox access token header.
 - `bootstrap.installCommand` and `bootstrap.startCommand` are deprecated and ignored. The fields are still accepted by the config schema so old configs load, but the plugin logs a warning and ignores their values. `bootstrap.prepareCommands` still runs after upload and before the bootstrap-ready marker is written.
 - The uploader uses a recursive snapshot model and excludes common heavy directories. A git-aware or archive-based sync can replace it later.
 
@@ -158,5 +160,3 @@ OPENCODE_EXPERIMENTAL_WORKSPACES=true opencode
 - Add support for cloning from a git remote instead of uploading the working tree.
 - Revisit the `.git/opencode` project marker (forced `git init` today) once OpenCode exposes a non-git project-root signal.
 - Persist richer workspace metadata in `extra`.
-- Add support for secured traffic and OpenCode target headers.
-- Add health probes tailored to the OpenCode server once the runtime command is finalized.

@@ -217,78 +217,97 @@ async function createWorkspace(
       }
     }
 
-    stage = "resolve-plugin-version"
-    const pluginPackageVersion = await resolveLocalPluginVersion()
-
-    stage = "create-sandbox"
-    await logger?.info("create workspace provisioning sandbox", {
-      workspaceID: info.id,
-      pluginPackageVersion,
-    })
-    const freshCompatibility = buildFreshCompatibility(config, runtimeVersion)
-    const sandbox = await createWorkspaceSandbox(
+    stage = "provision-fresh-workspace"
+    await provisionFreshWorkspace({
       info,
+      env,
       config,
-      freshCompatibility,
       runtimeVersion,
-      pluginPackageVersion,
+      localDirectory,
       logger,
-    )
-
-    try {
-      stage = "upload-snapshot"
-      await logger?.info("create workspace uploading snapshot", {
-        workspaceID: info.id,
-        sandboxID: sandbox.sandboxId,
-        localDirectory,
-      })
-      await uploadLocalSnapshot({
-        sandbox,
-        localRoot: localDirectory,
-        remoteRoot: config.projectPath,
-        upload: config.upload,
-      })
-
-      stage = "bootstrap-remote-opencode"
-      await logger?.info("create workspace bootstrapping remote opencode", {
-        workspaceID: info.id,
-        sandboxID: sandbox.sandboxId,
-      })
-      await bootstrapWorkspace({
-        sandbox,
-        info,
-        config,
-        env,
-        logger,
-      })
-
-      await logger?.info("create workspace complete", {
-        workspaceID: info.id,
-        sandboxID: sandbox.sandboxId,
-      })
-    } catch (error) {
-      await logger?.error("create workspace failed after sandbox provisioned", {
-        workspaceID: info.id,
-        sandboxID: sandbox.sandboxId,
-        stage,
-        error: errorMessage(error),
-      })
-      await sandbox.kill().catch(async (killError: unknown) => {
-        await logger?.warn("create workspace failed to kill sandbox during cleanup", {
-          workspaceID: info.id,
-          sandboxID: sandbox.sandboxId,
-          error: errorMessage(killError),
-        })
-      })
-      forgetSandboxCompatibility(sandbox.sandboxId)
-      throw error
-    }
+    })
   } catch (error) {
     await logger?.error("create workspace failed", {
       workspaceID: info.id,
       stage,
       error: errorMessage(error),
     })
+    throw error
+  }
+}
+
+async function provisionFreshWorkspace(params: {
+  info: WorkspaceInfo
+  env: Record<string, string | undefined>
+  config: NormalizedE2BWorkspaceConfig
+  runtimeVersion: string
+  localDirectory: string
+  logger?: PluginLogger
+}): Promise<void> {
+  let stage = "resolve-plugin-version"
+  const pluginPackageVersion = await resolveLocalPluginVersion()
+
+  stage = "create-sandbox"
+  await params.logger?.info("create workspace provisioning sandbox", {
+    workspaceID: params.info.id,
+    pluginPackageVersion,
+  })
+  const freshCompatibility = buildFreshCompatibility(params.config, params.runtimeVersion)
+  const sandbox = await createWorkspaceSandbox(
+    params.info,
+    params.config,
+    freshCompatibility,
+    params.runtimeVersion,
+    pluginPackageVersion,
+    params.logger,
+  )
+
+  try {
+    stage = "upload-snapshot"
+    await params.logger?.info("create workspace uploading snapshot", {
+      workspaceID: params.info.id,
+      sandboxID: sandbox.sandboxId,
+      localDirectory: params.localDirectory,
+    })
+    await uploadLocalSnapshot({
+      sandbox,
+      localRoot: params.localDirectory,
+      remoteRoot: params.config.projectPath,
+      upload: params.config.upload,
+    })
+
+    stage = "bootstrap-remote-opencode"
+    await params.logger?.info("create workspace bootstrapping remote opencode", {
+      workspaceID: params.info.id,
+      sandboxID: sandbox.sandboxId,
+    })
+    await bootstrapWorkspace({
+      sandbox,
+      info: params.info,
+      config: params.config,
+      env: params.env,
+      logger: params.logger,
+    })
+
+    await params.logger?.info("create workspace complete", {
+      workspaceID: params.info.id,
+      sandboxID: sandbox.sandboxId,
+    })
+  } catch (error) {
+    await params.logger?.error("create workspace failed after sandbox provisioned", {
+      workspaceID: params.info.id,
+      sandboxID: sandbox.sandboxId,
+      stage,
+      error: errorMessage(error),
+    })
+    await sandbox.kill().catch(async (killError: unknown) => {
+      await params.logger?.warn("create workspace failed to kill sandbox during cleanup", {
+        workspaceID: params.info.id,
+        sandboxID: sandbox.sandboxId,
+        error: errorMessage(killError),
+      })
+    })
+    forgetSandboxCompatibility(sandbox.sandboxId)
     throw error
   }
 }

@@ -105,14 +105,12 @@ async function performGC(config: ResolvedGCConfig, logger?: PluginLogger): Promi
   let deleted = 0
   let failed = 0
 
-  await runInPool(TEMPLATE_GC_DELETE_CONCURRENCY, staleTemplates, async (candidate) => {
-    const wasDeleted = await deleteTemplate(client, candidate, logger)
-    if (wasDeleted) {
-      deleted += 1
-    } else {
-      failed += 1
-    }
-  })
+  for (let index = 0; index < staleTemplates.length; index += TEMPLATE_GC_DELETE_CONCURRENCY) {
+    const batch = staleTemplates.slice(index, index + TEMPLATE_GC_DELETE_CONCURRENCY)
+    const results = await Promise.all(batch.map((candidate) => deleteTemplate(client, candidate, logger)))
+    deleted += results.filter(Boolean).length
+    failed += results.filter((wasDeleted) => !wasDeleted).length
+  }
 
   await logger?.info("template gc complete", {
     deleted,
@@ -289,27 +287,4 @@ async function deleteTemplate(
     })
     return false
   }
-}
-
-/**
- * Run async work over a list with a fixed maximum number of in-flight tasks.
- */
-async function runInPool<T>(limit: number, items: T[], worker: (item: T) => Promise<void>): Promise<void> {
-  let nextIndex = 0
-
-  async function runWorker(): Promise<void> {
-    while (true) {
-      const currentIndex = nextIndex
-      nextIndex += 1
-
-      const item = items[currentIndex]
-      if (item === undefined) {
-        return
-      }
-
-      await worker(item)
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => runWorker()))
 }

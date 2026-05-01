@@ -185,7 +185,9 @@ function parseFlags(rawFlags: string | undefined): string[] {
     if (Array.isArray(parsed) && parsed.every((flag) => typeof flag === "string")) {
       return parsed
     }
-  } catch {}
+  } catch {
+    // Invalid metadata is treated the same as missing metadata.
+  }
 
   return []
 }

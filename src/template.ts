@@ -54,7 +54,7 @@ const managedTemplatePromises = new Map<string, Promise<string>>()
  * Inputs that influence the managed template identity. Changing any of these
  * produces a different alias and a fresh template build.
  */
-type ManagedTemplateInputs = {
+export type ManagedTemplateInputs = {
   /** Node Docker variant passed to `Template().fromNodeImage(...)`. */
   nodeVariant: string
   /** Pinned controller version to install into the template at build time. */
@@ -205,7 +205,7 @@ function buildBakedStartCommand(projectPath: string, serverPort: number): string
  * plugin package version produces a different alias and therefore a fresh
  * template build on next use.
  */
-function buildManagedTemplateAlias(inputs: ManagedTemplateInputs): string {
+export function buildManagedTemplateAlias(inputs: ManagedTemplateInputs): string {
   const readableNodeVariant = normalizeAliasSegment(inputs.nodeVariant).slice(0, 24) || "node"
   // Use NUL as a separator so the hash is injective across inputs that happen
   // to share suffixes/prefixes.

@@ -27,8 +27,8 @@ export type E2BBootstrapOptions = {
 
 /**
  * Upload behavior for the initial local snapshot copied into the sandbox.
- * The current implementation is intentionally simple, but the config leaves
- * room for richer sync engines later.
+ * The uploader starts with recursive snapshot behavior and leaves room for
+ * richer sync engines later.
  */
 export type E2BUploadOptions = {
   ignore?: string[]
@@ -61,8 +61,8 @@ export type E2BTemplateGCOptions = {
 
 /**
  * Public plugin options accepted from the OpenCode config file.
- * These are kept open ended and mostly provider-facing so later work can
- * refine behavior without changing the high level package structure.
+ * These are provider-facing options that can evolve without changing the high
+ * level package structure.
  */
 export type E2BWorkspacePluginOptions = PluginOptions & {
   nodeVariant?: string
@@ -126,10 +126,9 @@ export type PersistedWorkspaceExtra = {
 }
 
 /**
- * The runtime workspace adaptor API currently accepts an `env` object during
- * `create()`, but the published plugin type package is temporarily behind that
- * runtime surface. This local type keeps the scaffold aligned with current
- * OpenCode behavior while that mismatch exists.
+ * The runtime workspace adaptor API accepts an `env` object during `create()`,
+ * but the published plugin type package lags that runtime surface. This local
+ * type models the behavior the plugin receives from OpenCode.
  */
 export type RuntimeWorkspaceAdaptor = {
   name: string

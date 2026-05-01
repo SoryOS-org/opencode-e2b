@@ -151,7 +151,7 @@ export function buildPersistedExtra(
 /**
  * Merge persisted workspace config back into the current runtime options.
  * The stored values win for per-workspace identity, while broader plugin-level
- * defaults continue to control the more open ended behaviors.
+ * defaults continue to control broader runtime behavior.
  */
 export function resolveWorkspaceConfig(
   info: WorkspaceInfo,
@@ -249,8 +249,8 @@ function readPersistedExtra(info: WorkspaceInfo): PersistedWorkspaceExtra | unde
 }
 
 /**
- * Derive stable provenance flags from the current scaffold behavior. Missing
- * future flags should be interpreted as unknown rather than false.
+ * Derive stable provenance flags from the runtime behavior. Missing future
+ * flags should be interpreted as unknown rather than false.
  */
 function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">): string[] {
   const flags = new Set<string>([

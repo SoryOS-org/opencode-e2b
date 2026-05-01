@@ -1,9 +1,9 @@
-import type { Plugin, PluginInput } from "@opencode-ai/plugin"
+import type { Plugin, PluginInput, WorkspaceAdaptor, WorkspaceInfo } from "@opencode-ai/plugin"
 
 import { normalizeOptions, validatePluginOptions, warnDeprecatedBootstrapOptions } from "./config.js"
 import { runTemplateGC } from "./gc.js"
 import { errorMessage } from "./shared.js"
-import type { E2BWorkspacePluginOptions, PluginLogger } from "./types.js"
+import type { E2BWorkspacePluginOptions, PluginLogger, RuntimeWorkspaceAdaptor } from "./types.js"
 import { createE2BWorkspaceAdaptor } from "./workspace.js"
 
 /**
@@ -48,7 +48,7 @@ export const E2BWorkspacePlugin: Plugin = async (
     gcConfig,
   })
 
-  experimental_workspace.register("e2b", adaptor as never)
+  experimental_workspace.register("e2b", toPublishedWorkspaceAdaptor(adaptor))
 
   if (gcConfig.enabled) {
     void runTemplateGC(gcConfig, logger).catch(() => {})
@@ -58,6 +58,41 @@ export const E2BWorkspacePlugin: Plugin = async (
 }
 
 export default E2BWorkspacePlugin
+
+type WorkspaceAdaptorWithRuntimeEnv = Omit<WorkspaceAdaptor, "create"> & {
+  create(
+    info: WorkspaceInfo,
+    envOrFrom?: Record<string, string | undefined> | WorkspaceInfo,
+    from?: WorkspaceInfo,
+  ): Promise<void>
+}
+
+function toPublishedWorkspaceAdaptor(adaptor: RuntimeWorkspaceAdaptor): WorkspaceAdaptor {
+  const published: WorkspaceAdaptorWithRuntimeEnv = {
+    name: adaptor.name,
+    description: adaptor.description,
+    configure(info) {
+      return adaptor.configure(info)
+    },
+    create(info, envOrFrom, from) {
+      const env = isWorkspaceInfo(envOrFrom) ? {} : envOrFrom
+      const sourceWorkspace = isWorkspaceInfo(envOrFrom) ? envOrFrom : from
+      return adaptor.create(info, env ?? {}, sourceWorkspace)
+    },
+    remove(info) {
+      return adaptor.remove(info)
+    },
+    target(info) {
+      return adaptor.target(info)
+    },
+  }
+
+  return published
+}
+
+function isWorkspaceInfo(value: unknown): value is WorkspaceInfo {
+  return Boolean(value && typeof value === "object" && "projectID" in value)
+}
 
 type PluginLogLevel = "info" | "warn" | "error"
 

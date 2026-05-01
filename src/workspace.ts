@@ -14,7 +14,6 @@ import {
   findWorkspaceSandboxRecord,
   removeWorkspaceSandbox,
   readSandboxCompatibility,
-  requireWorkspaceSandboxRecord,
   sandboxBaseUrl,
   sandboxTargetHeaders,
 } from "./e2b.js"
@@ -33,6 +32,7 @@ import type {
   RuntimeWorkspaceAdaptor,
 } from "./types.js"
 import { uploadLocalSnapshot } from "./upload.js"
+import { resolveWorkspaceTarget } from "./workspace-target.js"
 
 type WorkspaceAdaptorDeps = {
   directory: string
@@ -73,28 +73,12 @@ export function createE2BWorkspaceAdaptor(deps: WorkspaceAdaptorDeps): RuntimeWo
     },
     async target(info) {
       assertE2BApiKeyAvailable()
-      const localRuntimeVersion = await resolveLocalRuntimeVersion(deps.serverUrl, deps.logger)
-      const config = resolveWorkspaceConfig(info, deps.options)
-      const compatibility = resolveWorkspaceCompatibility(info, config, localRuntimeVersion)
-      const record = await requireWorkspaceSandboxRecord(info, config)
-      const baseUrl = sandboxBaseUrl(record.sandbox, config)
-      const headers = sandboxTargetHeaders(record.sandbox, config)
-
-      await assertWorkspaceCompatibility({
-        workspaceID: info.id,
-        localRuntimeVersion,
-        persistedCompatibility: compatibility,
-        sandboxCompatibility: readSandboxCompatibility(record.metadata),
-        sandbox: record.sandbox,
-        baseUrl,
-        headers,
+      return resolveWorkspaceTarget({
+        info,
+        options: deps.options,
+        serverUrl: deps.serverUrl,
+        logger: deps.logger,
       })
-
-      return {
-        type: "remote",
-        url: baseUrl,
-        ...(headers ? { headers } : {}),
-      }
     },
   }
 }

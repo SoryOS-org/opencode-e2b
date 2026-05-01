@@ -25,10 +25,6 @@ const DEFAULT_IGNORE = [
   ".DS_Store",
 ] as const
 
-/**
- * Normalize raw plugin options into the concrete runtime config used by the
- * rest of the package.
- */
 export function normalizeOptions(options?: E2BWorkspacePluginOptions): NormalizedE2BWorkspaceConfig {
   const sandboxTimeoutMs =
     requirePositiveInteger(options?.sandboxTimeoutMs, "sandboxTimeoutMs") ?? 60 * 60 * 1000
@@ -59,14 +55,7 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
     },
     bootstrap: {
       prepareCommands: options?.bootstrap?.prepareCommands ?? [],
-      // Deprecated: the pinned controller is now installed at managed
-      // template build time. This field is still validated so older
-      // configs continue to load, but its value is ignored at runtime.
       installCommand: options?.bootstrap?.installCommand ?? "",
-      // Deprecated: the managed template bakes its own start command that
-      // waits for the bootstrap-ready marker and then exec's the installed
-      // opencode by absolute path. This field is still validated so older
-      // configs continue to load, but its value is ignored at runtime.
       startCommand: options?.bootstrap?.startCommand ?? "",
       waitForPath: options?.bootstrap?.waitForPath ?? "/global/health",
       waitForTimeoutMs,
@@ -92,12 +81,6 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
   }
 }
 
-/**
- * Warn once per process when deprecated `bootstrap` options are set in the
- * user config. Their values are schema-validated so loading succeeds, but
- * they no longer affect runtime behavior — carrying them silently would be
- * misleading to users who expect them to run.
- */
 export async function warnDeprecatedBootstrapOptions(
   options: E2BWorkspacePluginOptions | undefined,
   logger: PluginLogger | undefined,
@@ -124,9 +107,6 @@ export async function warnDeprecatedBootstrapOptions(
   }
 }
 
-/**
- * Create the persisted `extra` blob stored with the workspace row.
- */
 export function buildPersistedExtra(
   config: NormalizedE2BWorkspaceConfig,
   runtimeVersion: string,
@@ -145,11 +125,6 @@ export function buildPersistedExtra(
   }
 }
 
-/**
- * Merge persisted workspace config back into the current runtime options.
- * The stored values win for per-workspace identity, while broader plugin-level
- * defaults continue to control broader runtime behavior.
- */
 export function resolveWorkspaceConfig(
   info: WorkspaceInfo,
   options?: E2BWorkspacePluginOptions,
@@ -173,11 +148,6 @@ export function resolveWorkspaceConfig(
   }
 }
 
-/**
- * Resolve the persisted workspace compatibility data used for sandbox metadata
- * and compatibility checks. When older workspace rows are missing these
- * values, the current runtime values are used as a best-effort fallback.
- */
 export function resolveWorkspaceCompatibility(
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
@@ -195,13 +165,6 @@ export function resolveWorkspaceCompatibility(
   }
 }
 
-/**
- * Build compatibility data that reflects the current plugin + controller
- * state, ignoring whatever was previously persisted. Use this whenever a
- * sandbox is provisioned fresh (first create, or replacement after an
- * incompatible one was killed) so its metadata matches the code that wrote
- * it.
- */
 export function buildFreshCompatibility(
   config: NormalizedE2BWorkspaceConfig,
   runtimeVersion: string,
@@ -213,19 +176,12 @@ export function buildFreshCompatibility(
   }
 }
 
-/**
- * Generate a stable, readable default workspace name.
- */
 export function defaultWorkspaceName(info: WorkspaceInfo): string {
   const branchPart = info.branch?.replace(/[^a-zA-Z0-9._-]+/g, "-")
   const suffix = info.id.slice(-6)
   return branchPart ? `e2b-${branchPart}` : `e2b-${suffix}`
 }
 
-/**
- * Parse the persisted `extra` payload when it matches the plugin's expected
- * shape. Invalid or unrelated `extra` values are ignored instead of failing.
- */
 function readPersistedExtra(info: WorkspaceInfo): PersistedWorkspaceExtra | undefined {
   if (!info.extra || typeof info.extra !== "object") return undefined
 
@@ -245,33 +201,16 @@ function readPersistedExtra(info: WorkspaceInfo): PersistedWorkspaceExtra | unde
   return candidate as PersistedWorkspaceExtra
 }
 
-/**
- * Derive stable provenance flags from the runtime behavior. Missing future
- * flags should be interpreted as unknown rather than false.
- */
 function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">): string[] {
-  const flags = new Set<string>([
-    "sync:local-snapshot-upload",
-    "repo:git-init",
-    // Managed templates now start from a Node image and install the pinned
-    // controller before baking the marker-gated start command.
-    "install:node-base",
-  ])
+  const flags = new Set<string>(["sync:local-snapshot-upload", "repo:git-init", "install:node-base"])
 
   if (config.bootstrap.prepareCommands.some((command) => command.trim())) {
     flags.add("bootstrap:prepare-commands")
   }
 
-  // `bootstrap.installCommand` and `bootstrap.startCommand` are accepted for
-  // schema compatibility but no longer affect runtime behavior, so no
-  // provenance flag is emitted.
-
   return [...flags]
 }
 
-/**
- * Validate optional numeric configuration before runtime behavior depends on it.
- */
 function requirePositiveInteger(value: number | undefined, fieldName: string): number | undefined {
   if (value === undefined) return undefined
   if (Number.isInteger(value) && value > 0) {

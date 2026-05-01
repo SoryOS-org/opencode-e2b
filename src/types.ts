@@ -1,10 +1,5 @@
 import type { PluginOptions, WorkspaceInfo } from "@opencode-ai/plugin"
 
-/**
- * Network options that feed directly into E2B sandbox creation.
- * The shape stays broad on purpose so later iterations can add more
- * provider-specific controls without reworking the plugin surface.
- */
 export type E2BNetworkOptions = {
   allowPublicTraffic?: boolean
   allowOut?: string[]
@@ -12,11 +7,6 @@ export type E2BNetworkOptions = {
   maskRequestHost?: string
 }
 
-/**
- * Bootstrap commands run inside the sandbox during `adaptor.create`.
- * `prepareCommands` is the supported extension point; `installCommand` and
- * `startCommand` are accepted for schema compatibility but ignored.
- */
 export type E2BBootstrapOptions = {
   prepareCommands?: string[]
   installCommand?: string
@@ -25,11 +15,6 @@ export type E2BBootstrapOptions = {
   waitForTimeoutMs?: number
 }
 
-/**
- * Upload behavior for the initial local snapshot copied into the sandbox.
- * The uploader starts with recursive snapshot behavior and leaves room for
- * richer sync engines later.
- */
 export type E2BUploadOptions = {
   ignore?: string[]
   includeDotGit?: boolean
@@ -37,11 +22,6 @@ export type E2BUploadOptions = {
   followSymlinks?: boolean
 }
 
-/**
- * Garbage collection of managed templates this plugin published. Runs
- * best-effort at plugin load and after workspace teardown; never blocks the
- * caller.
- */
 export type E2BTemplateGCOptions = {
   /** When false, GC is disabled entirely. Default true. */
   enabled?: boolean
@@ -59,11 +39,6 @@ export type E2BTemplateGCOptions = {
   cooldownMs?: number
 }
 
-/**
- * Public plugin options accepted from the OpenCode config file.
- * These are provider-facing options that can evolve without changing the high
- * level package structure.
- */
 export type E2BWorkspacePluginOptions = PluginOptions & {
   nodeVariant?: string
   sandboxTimeoutMs?: number
@@ -77,11 +52,6 @@ export type E2BWorkspacePluginOptions = PluginOptions & {
   metadata?: Record<string, string>
 }
 
-/**
- * Normalized runtime config used internally by the plugin. Every field here is
- * concrete so the rest of the code can stay small and avoid repeating default
- * handling in every module.
- */
 export type NormalizedE2BWorkspaceConfig = {
   workspaceApiVersion: string
   nodeVariant: string
@@ -97,24 +67,12 @@ export type NormalizedE2BWorkspaceConfig = {
   flags: string[]
 }
 
-/**
- * Stable workspace compatibility details persisted both in OpenCode's
- * workspace row and in E2B sandbox metadata. These fields describe the local
- * and remote runtime compatibility expectations for a workspace instance.
- */
 export type PersistedWorkspaceCompatibility = {
   workspaceApiVersion: string
   runtimeVersion: string
   flags: string[]
 }
 
-/**
- * Data persisted into `WorkspaceInfo.extra`. This is intentionally limited to
- * stable, serializable configuration that later adaptor calls need to resolve
- * the same remote workspace behavior. The compatibility subset is spliced in
- * via intersection so the "extra is a superset of compatibility" relationship
- * is expressed in the type rather than duplicated field-by-field.
- */
 export type PersistedWorkspaceExtra = {
   e2b: PersistedWorkspaceCompatibility & {
     nodeVariant: string
@@ -125,11 +83,6 @@ export type PersistedWorkspaceExtra = {
   }
 }
 
-/**
- * The runtime workspace adaptor API accepts an `env` object during `create()`,
- * but the published plugin type package lags that runtime surface. This local
- * type models the behavior the plugin receives from OpenCode.
- */
 export type RuntimeWorkspaceAdaptor = {
   name: string
   description: string
@@ -139,24 +92,12 @@ export type RuntimeWorkspaceAdaptor = {
   target(info: WorkspaceInfo): Promise<{ type: "remote"; url: string | URL; headers?: HeadersInit }>
 }
 
-/**
- * Minimal logger shape used across plugin modules. The concrete
- * implementation lives in index.ts and forwards through the OpenCode app log
- * endpoint; everything else that needs to emit diagnostics accepts this
- * interface so we don't scatter duplicate definitions.
- */
 export type PluginLogger = {
   info(message: string, extra?: Record<string, unknown>): Promise<void>
   warn(message: string, extra?: Record<string, unknown>): Promise<void>
   error(message: string, extra?: Record<string, unknown>): Promise<void>
 }
 
-/**
- * Parsed view of the workspace-compatibility fields stored in E2B sandbox
- * metadata. Fields are optional because metadata may be absent on sandboxes
- * that didn't set every key; an unknown flag set should never be confused
- * with an empty set.
- */
 export type SandboxMetadataCompatibility = {
   workspaceApiVersion?: string
   runtimeVersion?: string

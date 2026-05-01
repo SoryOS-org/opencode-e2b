@@ -7,21 +7,11 @@ import { Sandbox } from "e2b"
 import { shellSingleQuote } from "./shared.js"
 import type { E2BUploadOptions } from "./types.js"
 
-/**
- * A single uploadable file represented only by its filesystem coordinates.
- * Contents are not held here — they are read lazily, one batch at a time, so
- * the peak memory cost of an upload is `batchSize * average file size` rather
- * than the full project snapshot.
- */
 type SnapshotPath = {
   absolutePath: string
   relativePath: string
 }
 
-/**
- * State shared across the recursive directory walk so symlink handling stays
- * bounded to the workspace root and cannot revisit the same real directory.
- */
 type WalkState = {
   rootRealPath: string
   visitedDirectories: Set<string>
@@ -30,10 +20,8 @@ type WalkState = {
 /**
  * Copy the local workspace snapshot into the sandbox project directory.
  *
- * The upload runs in rolling batches: at any given time we hold file contents
- * for at most one batch, hand them to the E2B filesystem API, then let them
- * go before reading the next batch. This keeps the plugin usable for larger
- * projects without needing a git-aware or archive-based uploader.
+ * Files are read in batches so upload memory usage scales with batch size,
+ * not with the full project snapshot.
  */
 export async function uploadLocalSnapshot(params: {
   sandbox: Sandbox
@@ -55,10 +43,6 @@ export async function uploadLocalSnapshot(params: {
   }
 }
 
-/**
- * Recursively collect uploadable file paths from the local project directory.
- * Deliberately cheap — does not read any file contents.
- */
 async function collectSnapshotPaths(
   localRoot: string,
   upload: Required<E2BUploadOptions>,
@@ -69,11 +53,6 @@ async function collectSnapshotPaths(
   })
 }
 
-/**
- * Walk a directory tree and return the relative/absolute paths that should be
- * uploaded. Skips configured ignore patterns, directory cycles, and out-of-root
- * symlinks.
- */
 async function walkDirectory(
   currentPath: string,
   localRoot: string,
@@ -117,10 +96,6 @@ async function walkDirectory(
   return files
 }
 
-/**
- * Create remote directories before bulk file writes so nested paths work across
- * templates consistently.
- */
 async function ensureRemoteDirectories(
   sandbox: Sandbox,
   remoteRoot: string,
@@ -140,9 +115,6 @@ async function ensureRemoteDirectories(
   }
 }
 
-/**
- * Decide whether a local path should be excluded from the uploaded snapshot.
- */
 function shouldIgnore(relativePath: string, upload: Required<E2BUploadOptions>): boolean {
   if (!upload.includeDotGit && (relativePath === ".git" || relativePath.startsWith(".git/"))) {
     return true
@@ -152,25 +124,14 @@ function shouldIgnore(relativePath: string, upload: Required<E2BUploadOptions>):
   return upload.ignore.some((pattern) => matchesIgnorePattern(relativePath, segments, pattern))
 }
 
-/**
- * Ignore entries are simple path literals, not glob patterns. A pattern
- * matches an exact relative path, a descendant prefix, or any path segment.
- */
 function matchesIgnorePattern(relativePath: string, segments: string[], pattern: string): boolean {
   return relativePath === pattern || relativePath.startsWith(`${pattern}/`) || segments.includes(pattern)
 }
 
-/**
- * Normalize a relative path into portable slash-separated form.
- */
 function normalizeRelativePath(relativePath: string): string {
   return relativePath.split(path.sep).join("/")
 }
 
-/**
- * Ensure followed symlinks stay within the workspace root before any files are
- * read and uploaded into the sandbox.
- */
 function assertWithinRoot(rootRealPath: string, candidateRealPath: string, sourcePath: string): void {
   const relativePath = path.relative(rootRealPath, candidateRealPath)
   const isWithinRoot =
@@ -182,16 +143,10 @@ function assertWithinRoot(rootRealPath: string, candidateRealPath: string, sourc
   throw new Error(`Refusing to follow symlink outside workspace root: ${sourcePath}`)
 }
 
-/**
- * Join a sandbox project root and relative path using POSIX separators.
- */
 function toRemotePath(remoteRoot: string, relativePath: string): string {
   return posix.join(remoteRoot, relativePath)
 }
 
-/**
- * Chunk an array into stable batch sizes.
- */
 function chunk<T>(items: T[], size: number): T[][] {
   const result: T[][] = []
   for (let index = 0; index < items.length; index += size) {

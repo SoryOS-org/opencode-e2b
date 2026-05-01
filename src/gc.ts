@@ -12,11 +12,6 @@ const TEMPLATE_GC_DELETE_CONCURRENCY = 4
 
 type ResolvedGCConfig = Required<E2BTemplateGCOptions>
 
-/**
- * Minimal template shape consumed by the GC pass. The SDK exposes many more
- * fields, but these are the only ones needed for ownership, staleness, and
- * deletion decisions.
- */
 type E2BTemplateListEntry = {
   templateID: string
   names?: string[]
@@ -27,10 +22,6 @@ type E2BTemplateListEntry = {
   createdAt?: string
 }
 
-/**
- * Derived deletion candidate metadata computed once up front so logging and
- * deletion do not have to recompute alias ownership or freshness.
- */
 type StaleTemplateCandidate = {
   entry: E2BTemplateListEntry
   alias: string
@@ -40,11 +31,6 @@ type StaleTemplateCandidate = {
 let gcPromise: Promise<void> | undefined
 let lastGcAt = 0
 
-/**
- * Best-effort garbage collection of managed templates older than the configured
- * TTL. The returned promise always resolves; all failures are logged through
- * the plugin logger and swallowed so callers never block or fail.
- */
 export function runTemplateGC(config: ResolvedGCConfig, logger?: PluginLogger): Promise<void> {
   if (!config.enabled) {
     return Promise.resolve()
@@ -75,11 +61,6 @@ export function runTemplateGC(config: ResolvedGCConfig, logger?: PluginLogger): 
   return run
 }
 
-/**
- * List templates from E2B, filter to managed stale candidates, and delete them
- * with bounded parallelism. Any per-template failure is logged and does not
- * stop the remainder of the sweep.
- */
 async function performGC(config: ResolvedGCConfig, logger?: PluginLogger): Promise<void> {
   const startedAt = Date.now()
   await logger?.info("template gc start", {
@@ -140,11 +121,6 @@ export function selectStaleManagedTemplates(
   })
 }
 
-/**
- * Fetch the account's template list once. Authentication failures are logged as
- * warnings and treated as a no-op so GC stays best-effort during degraded auth
- * states.
- */
 async function listTemplates(client: ApiClient, logger?: PluginLogger): Promise<E2BTemplateListEntry[]> {
   try {
     const response = await client.api.GET("/templates", {
@@ -178,29 +154,16 @@ async function listTemplates(client: ApiClient, logger?: PluginLogger): Promise<
   }
 }
 
-/**
- * Return whether the template advertises at least one managed alias. Namespaced
- * `team/alias` entries are normalized to the suffix after the last slash.
- */
 function isManagedTemplate(entry: E2BTemplateListEntry): boolean {
   return firstManagedAlias(entry) !== undefined
 }
 
-/**
- * Resolve the first managed alias from the provider response. `names` is the
- * canonical source; deprecated `aliases` is only used when `names` is absent or
- * empty so we remain tolerant of API shape quirks.
- */
 function firstManagedAlias(entry: E2BTemplateListEntry): string | undefined {
   return listCandidateNames(entry)
     .map(stripNamespace)
     .find((name) => name.startsWith(MANAGED_TEMPLATE_PREFIX))
 }
 
-/**
- * Select the provider field that carries alias-like names. The newer `names`
- * field wins whenever it has entries.
- */
 function listCandidateNames(entry: E2BTemplateListEntry): string[] {
   if (Array.isArray(entry.names) && entry.names.length > 0) {
     return entry.names
@@ -211,19 +174,11 @@ function listCandidateNames(entry: E2BTemplateListEntry): string[] {
   return []
 }
 
-/**
- * Strip any provider namespace prefix such as `team/alias`, keeping only the
- * final path segment for managed-prefix matching.
- */
 function stripNamespace(name: string): string {
   const slashIndex = name.lastIndexOf("/")
   return slashIndex >= 0 ? name.slice(slashIndex + 1) : name
 }
 
-/**
- * Compute freshness as the maximum valid timestamp across last spawn, update,
- * and creation time. Invalid or missing timestamps contribute zero.
- */
 function freshness(entry: E2BTemplateListEntry): number {
   return Math.max(
     parseTimestamp(entry.lastSpawnedAt),
@@ -232,10 +187,6 @@ function freshness(entry: E2BTemplateListEntry): number {
   )
 }
 
-/**
- * Parse an ISO timestamp into epoch milliseconds. Invalid values are folded to
- * zero so they do not make the template look newer than it is.
- */
 function parseTimestamp(value: string | null | undefined): number {
   if (!value) {
     return 0
@@ -245,11 +196,6 @@ function parseTimestamp(value: string | null | undefined): number {
   return Number.isNaN(parsed) ? 0 : parsed
 }
 
-/**
- * Delete a stale managed template. HTTP 404 is treated as success because the
- * template may already have been removed by another process between list and
- * delete.
- */
 async function deleteTemplate(
   client: ApiClient,
   candidate: StaleTemplateCandidate,

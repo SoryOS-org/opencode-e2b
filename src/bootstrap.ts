@@ -10,10 +10,7 @@ import { BOOTSTRAP_READY_MARKER, RUNTIME_ENV_FILE } from "./template.js"
 
 /**
  * Absolute path inside the sandbox where the baked template's start command
- * redirects the running OpenCode server's combined stdout+stderr. We read
- * from here on readiness-check failure so the user can see the actual server
- * error instead of just a generic timeout. Must stay in sync with the
- * template.ts constant of the same name.
+ * redirects OpenCode output. Must stay in sync with template.ts.
  */
 const START_COMMAND_LOG_PATH = "/tmp/opencode-serve.log"
 
@@ -24,10 +21,8 @@ const START_COMMAND_LOG_PATH = "/tmp/opencode-serve.log"
  * function only arranges the preconditions and waits for the server to
  * become reachable.
  *
- * The order of operations matters: the per-workspace env file must be on
- * disk before the bootstrap-ready marker is written, because the template's
- * baked start command only polls the marker and sources the env file once
- * without retries.
+ * The env file must exist before the marker is written because the baked
+ * command sources it once, immediately after the marker appears.
  */
 export async function bootstrapWorkspace(params: {
   sandbox: Sandbox
@@ -44,18 +39,6 @@ export async function bootstrapWorkspace(params: {
   await waitForServerReady(params.sandbox, params.config)
 }
 
-/**
- * Run the user-configured prepare commands before signaling the baked
- * runtime to start. These remain the supported extension point for
- * workspace-specific setup (env setup, dependency installs, filesystem
- * seeding) that has to happen after upload but before opencode boots.
- *
- * Note that `bootstrap.installCommand` and `bootstrap.startCommand` are no
- * longer part of the runtime flow: the pinned controller is installed at
- * template build time and launched by the template's baked start command.
- * Any values users set for those fields are validated by config.ts but
- * otherwise ignored; the plugin logs a deprecation warning once at load time.
- */
 async function runPrepareCommands(sandbox: Sandbox, config: NormalizedE2BWorkspaceConfig): Promise<void> {
   for (const command of config.bootstrap.prepareCommands) {
     if (!command.trim()) continue
@@ -63,10 +46,6 @@ async function runPrepareCommands(sandbox: Sandbox, config: NormalizedE2BWorkspa
   }
 }
 
-/**
- * Ensure the uploaded project directory is a git repository because current
- * OpenCode workspace support expects `.git/opencode` to exist in the sandbox.
- */
 async function ensureGitRepository(
   sandbox: Sandbox,
   info: WorkspaceInfo,
@@ -82,9 +61,6 @@ async function ensureGitRepository(
   await runCheckedCommand(sandbox, command)
 }
 
-/**
- * Write OpenCode's temporary project marker into the sandbox repository.
- */
 async function writeProjectMarker(
   sandbox: Sandbox,
   info: WorkspaceInfo,
@@ -124,15 +100,7 @@ function filterRuntimeEnv(env: Record<string, string | undefined>): Record<strin
   )
 }
 
-/**
- * Release the baked start command by creating the bootstrap-ready marker.
- * The template's init script polls this file path every 250ms and `exec`s
- * opencode as soon as it exists, so creating the marker is the single
- * handoff between per-workspace provisioning and server start.
- */
 async function signalBootstrapReady(sandbox: Sandbox, logger?: PluginLogger): Promise<void> {
-  // Write an empty file rather than touching via shell to avoid depending on
-  // a specific shell being on PATH in exotic base images.
   await sandbox.files.write(BOOTSTRAP_READY_MARKER, "")
   await logger?.info("bootstrap marker written", {
     markerPath: BOOTSTRAP_READY_MARKER,
@@ -141,11 +109,8 @@ async function signalBootstrapReady(sandbox: Sandbox, logger?: PluginLogger): Pr
 
 /**
  * Wait until the OpenCode server becomes reachable through the sandbox host.
- * The default readiness path is `/global/health`, which returns a small JSON
- * payload as soon as the server is accepting requests. We also defensively
- * cancel the response body on every iteration — a user-overridden path might
- * point at an SSE endpoint, and leaving the body open would leak one
- * persistent connection per poll cycle against the sandbox gateway.
+ * The response body is cancelled each time so a custom readiness path cannot
+ * leave a streaming response open across poll iterations.
  */
 async function waitForServerReady(sandbox: Sandbox, config: NormalizedE2BWorkspaceConfig): Promise<void> {
   const baseUrl = sandboxBaseUrl(sandbox, config)
@@ -163,11 +128,7 @@ async function waitForServerReady(sandbox: Sandbox, config: NormalizedE2BWorkspa
       })
       ready = response.ok
     } catch {
-      // Ignore transient startup errors until the timeout expires.
     } finally {
-      // Always release the underlying socket for this probe iteration. We
-      // never read the body because `response.ok` is populated from headers
-      // alone, and a streaming endpoint would otherwise stay open.
       if (response && !response.bodyUsed) {
         await response.body?.cancel().catch(() => {})
       }
@@ -178,10 +139,6 @@ async function waitForServerReady(sandbox: Sandbox, config: NormalizedE2BWorkspa
     await sleep(750)
   }
 
-  // The server never came up within the window. Best-effort fetch the tail of
-  // the baked start command's combined stdout/stderr log so the user sees the
-  // actual startup error (port conflict, crashed subprocess, template misconfig,
-  // etc.) instead of a generic timeout.
   const tail = await readStartCommandLogTail(sandbox).catch(() => undefined)
   const suffix = tail
     ? `\nLast ${tail.split("\n").length} lines from ${START_COMMAND_LOG_PATH}:\n${tail}`
@@ -189,29 +146,17 @@ async function waitForServerReady(sandbox: Sandbox, config: NormalizedE2BWorkspa
   throw new Error(`Timed out waiting for OpenCode server at ${readyUrl.toString()}${suffix}`)
 }
 
-/**
- * Read the last few lines of the captured start-command log. Runs as a
- * best-effort diagnostic and must never mask the original readiness error:
- * callers always catch and ignore failures from this helper.
- */
 async function readStartCommandLogTail(sandbox: Sandbox): Promise<string | undefined> {
   const exists = await sandbox.files.exists(START_COMMAND_LOG_PATH)
   if (!exists) return undefined
 
   const content = await sandbox.files.read(START_COMMAND_LOG_PATH)
   const lines = content.split("\n")
-  // Keep the output bounded so the error message stays readable.
   const maxLines = 40
   const slice = lines.length > maxLines ? lines.slice(lines.length - maxLines) : lines
   return slice.join("\n").trim()
 }
 
-/**
- * Run a remote command and fail with its captured output included when the
- * command exits unsuccessfully. Many install/bootstrap commands write their
- * most useful diagnostics to stdout rather than stderr (npm, pip, apt all
- * do this in common failure modes), so we surface both streams.
- */
 async function runCheckedCommand(sandbox: Sandbox, command: string, cwd?: string): Promise<void> {
   const result = await sandbox.commands.run(command, { cwd })
   if (result.exitCode === 0) return
@@ -229,9 +174,6 @@ async function runCheckedCommand(sandbox: Sandbox, command: string, cwd?: string
   throw new Error(`Remote command failed: ${command}\n${details}`)
 }
 
-/**
- * Sleep helper used by the readiness poll.
- */
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms))
 }

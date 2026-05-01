@@ -11,7 +11,10 @@ test("sandboxBaseUrl builds the gateway URL for the configured server port", () 
     },
   }
 
-  assert.equal(sandboxBaseUrl(sandbox, normalizeOptions()).toString(), "https://sandbox-host-4096.example.com/")
+  assert.equal(
+    sandboxBaseUrl(sandbox, normalizeOptions()).toString(),
+    "https://sandbox-host-4096.example.com/",
+  )
 })
 
 test("sandboxTargetHeaders returns secure access headers only when needed", () => {

@@ -56,10 +56,7 @@ export async function bootstrapWorkspace(params: {
  * Any values users set for those fields are validated by config.ts but
  * otherwise ignored; the plugin logs a deprecation warning once at load time.
  */
-async function runPrepareCommands(
-  sandbox: Sandbox,
-  config: NormalizedE2BWorkspaceConfig,
-): Promise<void> {
+async function runPrepareCommands(sandbox: Sandbox, config: NormalizedE2BWorkspaceConfig): Promise<void> {
   for (const command of config.bootstrap.prepareCommands) {
     if (!command.trim()) continue
     await runCheckedCommand(sandbox, command, config.projectPath)
@@ -186,7 +183,9 @@ async function waitForServerReady(sandbox: Sandbox, config: NormalizedE2BWorkspa
   // actual startup error (port conflict, crashed subprocess, template misconfig,
   // etc.) instead of a generic timeout.
   const tail = await readStartCommandLogTail(sandbox).catch(() => undefined)
-  const suffix = tail ? `\nLast ${tail.split("\n").length} lines from ${START_COMMAND_LOG_PATH}:\n${tail}` : ""
+  const suffix = tail
+    ? `\nLast ${tail.split("\n").length} lines from ${START_COMMAND_LOG_PATH}:\n${tail}`
+    : ""
   throw new Error(`Timed out waiting for OpenCode server at ${readyUrl.toString()}${suffix}`)
 }
 

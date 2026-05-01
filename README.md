@@ -125,10 +125,10 @@ npm run build
   "plugin": [
     [
       "/absolute/path/to/opencode-e2b/dist/index.js",
-       {
+      {
         "nodeVariant": "22-slim",
         "sandboxTimeoutMs": 3600000
-       }
+      }
     ]
   ]
 }

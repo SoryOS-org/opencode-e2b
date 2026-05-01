@@ -1,11 +1,7 @@
 import type { WorkspaceInfo } from "@opencode-ai/plugin"
 
 import { bootstrapWorkspace } from "./bootstrap.js"
-import {
-  buildFreshCompatibility,
-  resolveWorkspaceCompatibility,
-  resolveWorkspaceConfig,
-} from "./config.js"
+import { buildFreshCompatibility, resolveWorkspaceCompatibility, resolveWorkspaceConfig } from "./config.js"
 import {
   createWorkspaceSandbox,
   findWorkspaceSandboxRecord,
@@ -20,11 +16,7 @@ import {
   resolveLocalRuntimeVersion,
 } from "./runtime.js"
 import { errorMessage } from "./shared.js"
-import type {
-  E2BWorkspacePluginOptions,
-  NormalizedE2BWorkspaceConfig,
-  PluginLogger,
-} from "./types.js"
+import type { E2BWorkspacePluginOptions, NormalizedE2BWorkspaceConfig, PluginLogger } from "./types.js"
 import { uploadLocalSnapshot } from "./upload.js"
 
 export type ExistingSandboxPlan =

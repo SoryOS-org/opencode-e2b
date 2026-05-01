@@ -42,6 +42,11 @@ type WorkspaceAdaptorDeps = {
   gcConfig: NormalizedE2BWorkspaceConfig["templateGc"]
 }
 
+export type ExistingSandboxPlan =
+  | { action: "create" }
+  | { action: "reuse"; sandboxId: string }
+  | { action: "replace"; sandboxId: string; reason: unknown }
+
 /**
  * Build the OpenCode workspace adaptor around the E2B lifecycle operations.
  * Keeping this outside the plugin entrypoint makes `index.ts` responsible for
@@ -159,13 +164,15 @@ async function createWorkspace(
 
     stage = "find-existing-sandbox"
     const existingRecord = await findWorkspaceSandboxRecord(info, config)
+    const existingSandboxId = existingRecord?.sandbox.sandboxId
     if (existingRecord) {
       await logger?.info("create workspace found existing sandbox", {
         workspaceID: info.id,
-        sandboxID: existingRecord.sandbox.sandboxId,
+        sandboxID: existingSandboxId,
       })
 
       stage = "validate-existing-sandbox"
+      let compatibilityError: unknown
       try {
         const sandboxCompatibility = readSandboxCompatibility(existingRecord.metadata)
 
@@ -179,16 +186,28 @@ async function createWorkspace(
           headers: sandboxTargetHeaders(existingRecord.sandbox, config),
         })
 
+      } catch (error) {
+        compatibilityError = error
+      }
+
+      const plan = planExistingSandbox({
+        existingSandboxId,
+        compatibilityError,
+      })
+
+      if (plan.action === "reuse") {
         await logger?.info("create workspace reusing compatible sandbox", {
           workspaceID: info.id,
-          sandboxID: existingRecord.sandbox.sandboxId,
+          sandboxID: plan.sandboxId,
         })
         return
-      } catch (error) {
+      }
+
+      if (plan.action === "replace") {
         await logger?.warn("create workspace replacing incompatible sandbox", {
           workspaceID: info.id,
-          sandboxID: existingRecord.sandbox.sandboxId,
-          error: errorMessage(error),
+          sandboxID: plan.sandboxId,
+          error: errorMessage(plan.reason),
         })
         try {
           await existingRecord.sandbox.kill()
@@ -271,6 +290,28 @@ async function createWorkspace(
       error: errorMessage(error),
     })
     throw error
+  }
+}
+
+export function planExistingSandbox(params: {
+  existingSandboxId?: string
+  compatibilityError?: unknown
+}): ExistingSandboxPlan {
+  if (!params.existingSandboxId) {
+    return { action: "create" }
+  }
+
+  if (params.compatibilityError) {
+    return {
+      action: "replace",
+      sandboxId: params.existingSandboxId,
+      reason: params.compatibilityError,
+    }
+  }
+
+  return {
+    action: "reuse",
+    sandboxId: params.existingSandboxId,
   }
 }
 

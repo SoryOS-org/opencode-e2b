@@ -9,6 +9,7 @@ import {
   resolveWorkspaceCompatibility,
   resolveWorkspaceConfig,
 } from "./config.js"
+import { assertE2BApiKeyAvailable } from "./credentials.js"
 import {
   createWorkspaceSandbox,
   findWorkspaceSandboxRecord,
@@ -316,19 +317,4 @@ export function planExistingSandbox(params: {
     action: "reuse",
     sandboxId: params.existingSandboxId,
   }
-}
-
-/**
- * Preflight check for the E2B credential the SDK reads from the environment.
- * The SDK itself validates this at API call time, but doing it up front lets
- * us deliver a plugin-specific error before workspace provisioning starts.
- */
-function assertE2BApiKeyAvailable(): void {
-  const key = process.env.E2B_API_KEY
-  if (key && key.trim() !== "") return
-
-  throw new Error(
-    "E2B_API_KEY is not set. Export it in your shell (or OpenCode launch env) " +
-      "before enabling the e2b workspace plugin. Get a key at https://e2b.dev/dashboard.",
-  )
 }

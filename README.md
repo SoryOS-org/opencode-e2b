@@ -1,6 +1,6 @@
 # OpenCode E2B Workspace Plugin
 
-This repository contains a small TypeScript plugin package for OpenCode's experimental workspace API. The current implementation is intentionally open ended: it establishes the module boundaries and lifecycle we want, while keeping the internal pieces easy to expand later.
+This repository contains a TypeScript plugin package for OpenCode's experimental workspace API. It registers an E2B-backed workspace adaptor that provisions remote OpenCode workspaces from managed E2B templates.
 
 ## Current shape
 
@@ -12,7 +12,7 @@ This repository contains a small TypeScript plugin package for OpenCode's experi
 - `src/template.ts`: managed E2B template built from a Node base image with the pinned OpenCode runtime baked in.
 - `src/types.ts`: shared option and config types.
 
-## What the current scaffold does
+## Runtime flow
 
 - Registers an `e2b` workspace type.
 - Builds (once per `(nodeVariant, runtimeVersion, projectPath, serverPort, pluginPackageVersion)`) a managed E2B template that starts from a Node image, installs the pinned OpenCode controller at build time, and launches it from a marker-gated init command.
@@ -39,7 +39,7 @@ The current workaround is metadata-based discovery plus a small persisted worksp
 
 The plugin writes those values into E2B sandbox metadata at creation time and looks sandboxes up with `Sandbox.list({ query: { metadata } })` later.
 
-`opencodeFlags` is a serialized list of namespaced provenance markers. Today the scaffold derives flags such as:
+`opencodeFlags` is a serialized list of namespaced provenance markers. The plugin derives flags such as:
 
 - `sync:local-snapshot-upload`
 - `repo:git-init`
@@ -52,10 +52,10 @@ Missing flags should be treated as `unknown`, not `false`.
 
 - **Minimum supported OpenCode version: `1.14.20`.** The floor lives as a single
   constant in `src/runtime.ts`; bumping it requires a plugin release.
-- The local OpenCode runtime version is probed at plugin load via
-  `GET /global/health` against `PluginInput.serverUrl`. The probe both resolves
-  the version and gates the floor check, so a missing or too-old controller
-  fails fast at registration time.
+- The local OpenCode runtime version is probed during workspace lifecycle
+  operations via `GET /global/health` against `PluginInput.serverUrl`. The
+  plugin does not probe during plugin registration so config/debug commands can
+  load the plugin before the local server is listening.
 - That local version is baked into the managed template via
   `npm install -g opencode-ai@<version>` at build time, so fresh sandboxes
   ship a floor-compliant controller by construction.
@@ -142,15 +142,15 @@ OPENCODE_EXPERIMENTAL_WORKSPACES=true opencode
 
 ## Notes on defaults
 
-- The scaffold defaults to the Node Docker image variant `22-slim`.
-- Managed templates are built from `Template().fromNodeImage(nodeVariant)`. Custom base images are not currently supported; that is intentionally deferred to a follow-up.
+- The plugin defaults to the Node Docker image variant `22-slim`.
+- Managed templates are built from `Template().fromNodeImage(nodeVariant)`. Custom base images are not supported yet.
 - The managed template installs the pinned version via `npm install -g opencode-ai@<runtimeVersion>` at build time.
 - The template's start command waits for the plugin to create `/tmp/.opencode-e2b-bootstrap-ready`, sources the per-sandbox env file at `/tmp/.opencode-e2b.env`, then `exec`s `/usr/local/bin/opencode serve`. Combined stdout/stderr land in `/tmp/opencode-serve.log` so the plugin can tail them on readiness timeout.
 - Per-workspace envs OpenCode delivers via `adaptor.create(config, env)` — `OPENCODE_WORKSPACE_ID`, `OPENCODE_EXPERIMENTAL_WORKSPACES`, `OPENCODE_AUTH_CONTENT`, `OTEL_EXPORTER_OTLP_*` — are written to `/tmp/.opencode-e2b.env` in POSIX-sh `export KEY='value'` form before the bootstrap-ready marker is touched. The baked start command sources that file so the envs reach `opencode serve`. The on-disk env file is required because E2B's `Sandbox.create({envs})` only applies to subsequent `sandbox.commands.run` calls, not to the template's init command.
 - The managed template alias is keyed by `nodeVariant`, pinned runtime version, project path, server port, and this plugin's own package version. Changing any of those produces a new alias and triggers a fresh template build on next use.
-- The scaffold defaults to public sandbox traffic for the remote workspace URL.
+- The plugin defaults to public sandbox traffic for the remote workspace URL.
 - `bootstrap.installCommand` and `bootstrap.startCommand` are deprecated and ignored. The fields are still accepted by the config schema so old configs load, but the plugin logs a warning and ignores their values. `bootstrap.prepareCommands` still runs after upload and before the bootstrap-ready marker is written.
-- The uploader intentionally uses a simple recursive snapshot model today. It excludes common heavy directories but is designed to be replaced with git-aware or tar-stream uploads later.
+- The uploader uses a recursive snapshot model and excludes common heavy directories. A git-aware or archive-based sync can replace it later.
 
 ## Extension points
 

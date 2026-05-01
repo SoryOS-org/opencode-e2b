@@ -17,10 +17,9 @@ export function toPublishedWorkspaceAdaptor(adaptor: RuntimeWorkspaceAdaptor): W
     configure(info) {
       return adaptor.configure(info)
     },
-    create(info, envOrFrom, from) {
+    create(info, envOrFrom) {
       const env = isWorkspaceInfo(envOrFrom) ? {} : envOrFrom
-      const sourceWorkspace = isWorkspaceInfo(envOrFrom) ? envOrFrom : from
-      return adaptor.create(info, env ?? {}, sourceWorkspace)
+      return adaptor.create(info, env ?? {})
     },
     remove(info) {
       return adaptor.remove(info)

@@ -9,8 +9,8 @@ export function validatePluginOptions(raw: unknown): E2BWorkspacePluginOptions |
   const options = raw as Record<string, unknown>
   const errors: string[] = []
 
-  requireString(options.nodeVariant, "nodeVariant", false, errors)
-  requireString(options.projectPath, "projectPath", false, errors)
+  requireNonEmptyString(options.nodeVariant, "nodeVariant", errors)
+  requireNonEmptyString(options.projectPath, "projectPath", errors)
   requirePositiveInteger(options.sandboxTimeoutMs, "sandboxTimeoutMs", errors)
   requirePositiveInteger(options.serverPort, "serverPort", errors)
   requireBoolean(options.secure, "secure", errors)
@@ -20,14 +20,14 @@ export function validatePluginOptions(raw: unknown): E2BWorkspacePluginOptions |
     requireBoolean(network.allowPublicTraffic, "network.allowPublicTraffic", errors)
     requireStringArray(network.allowOut, "network.allowOut", errors)
     requireStringArray(network.denyOut, "network.denyOut", errors)
-    requireString(network.maskRequestHost, "network.maskRequestHost", true, errors)
+    requireString(network.maskRequestHost, "network.maskRequestHost", errors)
   })
 
   requireObject(options.bootstrap, "bootstrap", errors, (bootstrap) => {
     requireStringArray(bootstrap.prepareCommands, "bootstrap.prepareCommands", errors)
-    requireString(bootstrap.installCommand, "bootstrap.installCommand", true, errors)
-    requireString(bootstrap.startCommand, "bootstrap.startCommand", true, errors)
-    requireString(bootstrap.waitForPath, "bootstrap.waitForPath", false, errors)
+    requireString(bootstrap.installCommand, "bootstrap.installCommand", errors)
+    requireString(bootstrap.startCommand, "bootstrap.startCommand", errors)
+    requireNonEmptyString(bootstrap.waitForPath, "bootstrap.waitForPath", errors)
     requirePositiveInteger(bootstrap.waitForTimeoutMs, "bootstrap.waitForTimeoutMs", errors)
   })
 
@@ -66,13 +66,20 @@ function requireObject(
   validateFields(value)
 }
 
-function requireString(value: unknown, fieldName: string, allowEmpty: boolean, errors: string[]): void {
+function requireString(value: unknown, fieldName: string, errors: string[]): void {
+  if (value === undefined) return
+  if (typeof value !== "string") {
+    errors.push(`${fieldName} must be a string`)
+  }
+}
+
+function requireNonEmptyString(value: unknown, fieldName: string, errors: string[]): void {
   if (value === undefined) return
   if (typeof value !== "string") {
     errors.push(`${fieldName} must be a string`)
     return
   }
-  if (!allowEmpty && value.trim() === "") {
+  if (value.trim() === "") {
     errors.push(`${fieldName} must be a non-empty string`)
   }
 }

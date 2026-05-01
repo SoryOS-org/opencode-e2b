@@ -26,10 +26,10 @@ test("uploadLocalSnapshot uploads project files and skips default ignores", asyn
       upload: normalizeOptions().upload,
     })
 
-    assert.deepEqual(
-      sandbox.writes.map((entry) => entry.path).sort(),
-      ["/home/user/project/README.md", "/home/user/project/src/index.ts"],
-    )
+    assert.deepEqual(sandbox.writes.map((entry) => entry.path).sort(), [
+      "/home/user/project/README.md",
+      "/home/user/project/src/index.ts",
+    ])
     const readme = sandbox.writes.find((entry) => entry.path.endsWith("/README.md"))
     assert.equal(bufferText(readme.data), "readme")
     assert.match(sandbox.commandsRun[0], /mkdir -p/)

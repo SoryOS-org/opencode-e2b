@@ -4,11 +4,7 @@ import { Sandbox } from "e2b"
 
 import { CURRENT_WORKSPACE_API_VERSION } from "./config.js"
 import { errorMessage } from "./shared.js"
-import type {
-  PersistedWorkspaceCompatibility,
-  PluginLogger,
-  SandboxMetadataCompatibility,
-} from "./types.js"
+import type { PersistedWorkspaceCompatibility, PluginLogger, SandboxMetadataCompatibility } from "./types.js"
 
 const HEALTH_TIMEOUT_MS = 1_500
 
@@ -65,20 +61,13 @@ export function forgetSandboxCompatibility(sandboxId: string): void {
  * including a controller version below the supported floor, clears the cache so
  * the next call re-probes the controller.
  */
-export async function resolveLocalRuntimeVersion(
-  serverUrl: URL,
-  logger?: PluginLogger,
-): Promise<string> {
+export async function resolveLocalRuntimeVersion(serverUrl: URL, logger?: PluginLogger): Promise<string> {
   installedRuntimeVersionPromise ??= fetchRemoteRuntimeHealth(serverUrl, {
     target: "local-controller",
     logger,
   })
     .then((health) => {
-      assertRuntimeMeetsFloor(
-        health.version,
-        MINIMUM_SUPPORTED_RUNTIME_VERSION,
-        "local controller",
-      )
+      assertRuntimeMeetsFloor(health.version, MINIMUM_SUPPORTED_RUNTIME_VERSION, "local controller")
       return health.version
     })
     .catch((error) => {
@@ -162,11 +151,7 @@ export async function assertWorkspaceCompatibility(params: {
     logger: undefined,
     headers: params.headers,
   })
-  assertRuntimeMeetsFloor(
-    remoteRuntimeVersion,
-    MINIMUM_SUPPORTED_RUNTIME_VERSION,
-    "remote sandbox",
-  )
+  assertRuntimeMeetsFloor(remoteRuntimeVersion, MINIMUM_SUPPORTED_RUNTIME_VERSION, "remote sandbox")
 
   compatibilityCache.set(params.sandbox.sandboxId, {
     localRuntimeVersion: params.localRuntimeVersion,
@@ -226,9 +211,7 @@ function assertRuntimeMeetsFloor(
       return
     }
   } catch (error) {
-    throw new Error(
-      `Failed to parse ${side} OpenCode version "${version}": ${errorMessage(error)}`,
-    )
+    throw new Error(`Failed to parse ${side} OpenCode version "${version}": ${errorMessage(error)}`)
   }
 
   throw new Error(

@@ -194,7 +194,9 @@ function isManagedTemplate(entry: E2BTemplateListEntry): boolean {
  * empty so we remain tolerant of API shape quirks.
  */
 function firstManagedAlias(entry: E2BTemplateListEntry): string | undefined {
-  return listCandidateNames(entry).map(stripNamespace).find((name) => name.startsWith(MANAGED_TEMPLATE_PREFIX))
+  return listCandidateNames(entry)
+    .map(stripNamespace)
+    .find((name) => name.startsWith(MANAGED_TEMPLATE_PREFIX))
 }
 
 /**

@@ -7,11 +7,7 @@ import type {
   PersistedWorkspaceExtra,
   PluginLogger,
 } from "./types.js"
-import {
-  DEFAULT_TEMPLATE_GC_COOLDOWN_MS,
-  DEFAULT_TEMPLATE_GC_TTL_MS,
-  MIN_TEMPLATE_GC_TTL_MS,
-} from "./gc.js"
+import { DEFAULT_TEMPLATE_GC_COOLDOWN_MS, DEFAULT_TEMPLATE_GC_TTL_MS, MIN_TEMPLATE_GC_TTL_MS } from "./gc.js"
 
 export { validatePluginOptions } from "./config-validate.js"
 
@@ -34,7 +30,8 @@ const DEFAULT_IGNORE = [
  * rest of the package.
  */
 export function normalizeOptions(options?: E2BWorkspacePluginOptions): NormalizedE2BWorkspaceConfig {
-  const sandboxTimeoutMs = requirePositiveInteger(options?.sandboxTimeoutMs, "sandboxTimeoutMs") ?? 60 * 60 * 1000
+  const sandboxTimeoutMs =
+    requirePositiveInteger(options?.sandboxTimeoutMs, "sandboxTimeoutMs") ?? 60 * 60 * 1000
   const serverPort = requirePositiveInteger(options?.serverPort, "serverPort") ?? 4096
   const waitForTimeoutMs =
     requirePositiveInteger(options?.bootstrap?.waitForTimeoutMs, "bootstrap.waitForTimeoutMs") ?? 30_000

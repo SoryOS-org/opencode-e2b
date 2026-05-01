@@ -12,112 +12,107 @@ export function validatePluginOptions(raw: unknown): E2BWorkspacePluginOptions |
   }
 
   const options = raw as Record<string, unknown>
-  const validator = new OptionValidator()
+  const errors: string[] = []
 
-  validator.requireString(options.nodeVariant, "nodeVariant", false)
-  validator.requireString(options.projectPath, "projectPath", false)
-  validator.requirePositiveInteger(options.sandboxTimeoutMs, "sandboxTimeoutMs")
-  validator.requirePositiveInteger(options.serverPort, "serverPort")
-  validator.requireBoolean(options.secure, "secure")
-  validator.requireStringRecord(options.metadata, "metadata")
+  requireString(options.nodeVariant, "nodeVariant", false, errors)
+  requireString(options.projectPath, "projectPath", false, errors)
+  requirePositiveInteger(options.sandboxTimeoutMs, "sandboxTimeoutMs", errors)
+  requirePositiveInteger(options.serverPort, "serverPort", errors)
+  requireBoolean(options.secure, "secure", errors)
+  requireStringRecord(options.metadata, "metadata", errors)
 
-  validator.requireObject(options.network, "network", (network) => {
-    validator.requireBoolean(network.allowPublicTraffic, "network.allowPublicTraffic")
-    validator.requireStringArray(network.allowOut, "network.allowOut")
-    validator.requireStringArray(network.denyOut, "network.denyOut")
-    validator.requireString(network.maskRequestHost, "network.maskRequestHost", true)
+  requireObject(options.network, "network", errors, (network) => {
+    requireBoolean(network.allowPublicTraffic, "network.allowPublicTraffic", errors)
+    requireStringArray(network.allowOut, "network.allowOut", errors)
+    requireStringArray(network.denyOut, "network.denyOut", errors)
+    requireString(network.maskRequestHost, "network.maskRequestHost", true, errors)
   })
 
-  validator.requireObject(options.bootstrap, "bootstrap", (bootstrap) => {
-    validator.requireStringArray(bootstrap.prepareCommands, "bootstrap.prepareCommands")
-    validator.requireString(bootstrap.installCommand, "bootstrap.installCommand", true)
-    validator.requireString(bootstrap.startCommand, "bootstrap.startCommand", true)
-    validator.requireString(bootstrap.waitForPath, "bootstrap.waitForPath", false)
-    validator.requirePositiveInteger(bootstrap.waitForTimeoutMs, "bootstrap.waitForTimeoutMs")
+  requireObject(options.bootstrap, "bootstrap", errors, (bootstrap) => {
+    requireStringArray(bootstrap.prepareCommands, "bootstrap.prepareCommands", errors)
+    requireString(bootstrap.installCommand, "bootstrap.installCommand", true, errors)
+    requireString(bootstrap.startCommand, "bootstrap.startCommand", true, errors)
+    requireString(bootstrap.waitForPath, "bootstrap.waitForPath", false, errors)
+    requirePositiveInteger(bootstrap.waitForTimeoutMs, "bootstrap.waitForTimeoutMs", errors)
   })
 
-  validator.requireObject(options.upload, "upload", (upload) => {
-    validator.requireStringArray(upload.ignore, "upload.ignore")
-    validator.requireBoolean(upload.includeDotGit, "upload.includeDotGit")
-    validator.requirePositiveInteger(upload.batchSize, "upload.batchSize")
-    validator.requireBoolean(upload.followSymlinks, "upload.followSymlinks")
+  requireObject(options.upload, "upload", errors, (upload) => {
+    requireStringArray(upload.ignore, "upload.ignore", errors)
+    requireBoolean(upload.includeDotGit, "upload.includeDotGit", errors)
+    requirePositiveInteger(upload.batchSize, "upload.batchSize", errors)
+    requireBoolean(upload.followSymlinks, "upload.followSymlinks", errors)
   })
 
-  validator.requireObject(options.templateGc, "templateGc", (templateGc) => {
-    validator.requireBoolean(templateGc.enabled, "templateGc.enabled")
-    validator.requirePositiveInteger(templateGc.ttlMs, "templateGc.ttlMs")
-    validator.requirePositiveInteger(templateGc.cooldownMs, "templateGc.cooldownMs")
+  requireObject(options.templateGc, "templateGc", errors, (templateGc) => {
+    requireBoolean(templateGc.enabled, "templateGc.enabled", errors)
+    requirePositiveInteger(templateGc.ttlMs, "templateGc.ttlMs", errors)
+    requirePositiveInteger(templateGc.cooldownMs, "templateGc.cooldownMs", errors)
   })
 
-  validator.assertValid()
+  if (errors.length > 0) {
+    throw new Error(`Invalid E2B plugin options:\n  - ${errors.join("\n  - ")}`)
+  }
+
   return options as E2BWorkspacePluginOptions
 }
 
-class OptionValidator {
-  private errors: string[] = []
-
-  requireObject(
-    value: unknown,
-    fieldName: string,
-    validateFields: (value: Record<string, unknown>) => void,
-  ): void {
-    if (value === undefined) return
-    if (!isPlainObject(value)) {
-      this.errors.push(`${fieldName} must be an object`)
-      return
-    }
-
-    validateFields(value)
+function requireObject(
+  value: unknown,
+  fieldName: string,
+  errors: string[],
+  validateFields: (value: Record<string, unknown>) => void,
+): void {
+  if (value === undefined) return
+  if (!isPlainObject(value)) {
+    errors.push(`${fieldName} must be an object`)
+    return
   }
 
-  requireString(value: unknown, fieldName: string, allowEmpty: boolean): void {
-    if (value === undefined) return
-    if (typeof value !== "string") {
-      this.errors.push(`${fieldName} must be a string`)
-      return
-    }
-    if (!allowEmpty && value.trim() === "") {
-      this.errors.push(`${fieldName} must be a non-empty string`)
-    }
-  }
+  validateFields(value)
+}
 
-  requireBoolean(value: unknown, fieldName: string): void {
-    if (value === undefined) return
-    if (typeof value !== "boolean") {
-      this.errors.push(`${fieldName} must be a boolean`)
-    }
+function requireString(value: unknown, fieldName: string, allowEmpty: boolean, errors: string[]): void {
+  if (value === undefined) return
+  if (typeof value !== "string") {
+    errors.push(`${fieldName} must be a string`)
+    return
   }
-
-  requirePositiveInteger(value: unknown, fieldName: string): void {
-    if (value === undefined) return
-    if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-      this.errors.push(`${fieldName} must be a positive integer`)
-    }
+  if (!allowEmpty && value.trim() === "") {
+    errors.push(`${fieldName} must be a non-empty string`)
   }
+}
 
-  requireStringArray(value: unknown, fieldName: string): void {
-    if (value === undefined) return
-    if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
-      this.errors.push(`${fieldName} must be an array of strings`)
-    }
+function requireBoolean(value: unknown, fieldName: string, errors: string[]): void {
+  if (value === undefined) return
+  if (typeof value !== "boolean") {
+    errors.push(`${fieldName} must be a boolean`)
   }
+}
 
-  requireStringRecord(value: unknown, fieldName: string): void {
-    if (value === undefined) return
-    if (!isPlainObject(value)) {
-      this.errors.push(`${fieldName} must be an object mapping strings to strings`)
-      return
-    }
-    for (const [key, entry] of Object.entries(value)) {
-      if (typeof entry !== "string") {
-        this.errors.push(`${fieldName}.${key} must be a string`)
-      }
-    }
+function requirePositiveInteger(value: unknown, fieldName: string, errors: string[]): void {
+  if (value === undefined) return
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    errors.push(`${fieldName} must be a positive integer`)
   }
+}
 
-  assertValid(): void {
-    if (this.errors.length === 0) return
-    throw new Error(`Invalid E2B plugin options:\n  - ${this.errors.join("\n  - ")}`)
+function requireStringArray(value: unknown, fieldName: string, errors: string[]): void {
+  if (value === undefined) return
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+    errors.push(`${fieldName} must be an array of strings`)
+  }
+}
+
+function requireStringRecord(value: unknown, fieldName: string, errors: string[]): void {
+  if (value === undefined) return
+  if (!isPlainObject(value)) {
+    errors.push(`${fieldName} must be an object mapping strings to strings`)
+    return
+  }
+  for (const [key, entry] of Object.entries(value)) {
+    if (typeof entry !== "string") {
+      errors.push(`${fieldName}.${key} must be a string`)
+    }
   }
 }
 

@@ -199,7 +199,7 @@ function parseSemver(version: string): { major: number; minor: number; patch: nu
  * Return whether a runtime version's numeric semver triple is at or above the
  * configured floor.
  */
-function meetsFloor(version: string, floor: string): boolean {
+export function meetsRuntimeFloor(version: string, floor: string): boolean {
   const parsedVersion = parseSemver(version)
   const parsedFloor = parseSemver(floor)
 
@@ -222,7 +222,7 @@ function assertRuntimeMeetsFloor(
   side: "local controller" | "remote sandbox",
 ): void {
   try {
-    if (meetsFloor(version, floor)) {
+    if (meetsRuntimeFloor(version, floor)) {
       return
     }
   } catch (error) {

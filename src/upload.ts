@@ -149,7 +149,15 @@ function shouldIgnore(relativePath: string, upload: Required<E2BUploadOptions>):
   }
 
   const segments = relativePath.split("/")
-  return upload.ignore.some((pattern) => segments.includes(pattern) || relativePath === pattern || relativePath.startsWith(`${pattern}/`))
+  return upload.ignore.some((pattern) => matchesIgnorePattern(relativePath, segments, pattern))
+}
+
+/**
+ * Ignore entries are simple path literals, not glob patterns. A pattern
+ * matches an exact relative path, a descendant prefix, or any path segment.
+ */
+function matchesIgnorePattern(relativePath: string, segments: string[], pattern: string): boolean {
+  return relativePath === pattern || relativePath.startsWith(`${pattern}/`) || segments.includes(pattern)
 }
 
 /**

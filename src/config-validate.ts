@@ -1,10 +1,5 @@
 import type { E2BWorkspacePluginOptions } from "./types.js"
 
-/**
- * Shape-check the user-supplied plugin options. OpenCode loads plugin options
- * from arbitrary JSON, so runtime validation keeps bad config from surfacing
- * later as confusing E2B SDK errors.
- */
 export function validatePluginOptions(raw: unknown): E2BWorkspacePluginOptions | undefined {
   if (raw === undefined || raw === null) return undefined
   if (typeof raw !== "object" || Array.isArray(raw)) {

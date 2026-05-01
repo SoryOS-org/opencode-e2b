@@ -32,11 +32,6 @@ type WorkspaceAdaptorDeps = {
   gcConfig: NormalizedE2BWorkspaceConfig["templateGc"]
 }
 
-/**
- * Build the OpenCode workspace adaptor around the E2B lifecycle operations.
- * Keeping this outside the plugin entrypoint makes `index.ts` responsible for
- * wiring only, while this module owns workspace behavior.
- */
 export function createE2BWorkspaceAdaptor(deps: WorkspaceAdaptorDeps): RuntimeWorkspaceAdaptor {
   return {
     name: "E2B Sandbox",
@@ -75,9 +70,6 @@ export function createE2BWorkspaceAdaptor(deps: WorkspaceAdaptorDeps): RuntimeWo
   }
 }
 
-/**
- * Build the persisted workspace record before sandbox creation begins.
- */
 async function configureWorkspace(
   info: WorkspaceInfo,
   options: E2BWorkspacePluginOptions | undefined,

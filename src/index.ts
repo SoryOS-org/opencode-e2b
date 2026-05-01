@@ -7,9 +7,6 @@ import { errorMessage } from "./shared.js"
 import type { E2BWorkspacePluginOptions, PluginLogger } from "./types.js"
 import { createE2BWorkspaceAdaptor } from "./workspace.js"
 
-/**
- * OpenCode plugin entrypoint for the E2B workspace adaptor.
- */
 export const E2BWorkspacePlugin: Plugin = async (
   { client, directory, experimental_workspace, serverUrl },
   rawOptions,
@@ -17,11 +14,8 @@ export const E2BWorkspacePlugin: Plugin = async (
   const logger = createPluginLogger(client)
   let options: E2BWorkspacePluginOptions | undefined
 
-  // OpenCode loads plugin options from user-controlled JSON, so shape-check
-  // them before any workspace lifecycle code trusts field types. Keep plugin
-  // load side-effect-light: commands such as `opencode debug config` load
-  // plugins before a local controller is guaranteed to be listening, so
-  // network/runtime probes belong in configure/create/target.
+  // Keep plugin load side-effect-light: `opencode debug config` can load
+  // plugins before the local controller is listening.
   try {
     options = validatePluginOptions(rawOptions)
   } catch (error) {
@@ -35,9 +29,6 @@ export const E2BWorkspacePlugin: Plugin = async (
     directory,
     serverUrl: serverUrl.toString(),
   })
-  // Warn once per process if deprecated bootstrap.* options are set; their
-  // values are validated for schema compatibility but no longer affect
-  // runtime behavior.
   await warnDeprecatedBootstrapOptions(options, logger)
   const gcConfig = normalizeOptions(options).templateGc
 
@@ -62,10 +53,6 @@ export default E2BWorkspacePlugin
 
 type PluginLogLevel = "info" | "warn" | "error"
 
-/**
- * Write plugin diagnostics through OpenCode's normal application log route so
- * they land in the standard log file during workspace debugging.
- */
 function createPluginLogger(client: PluginInput["client"]): PluginLogger {
   async function write(level: PluginLogLevel, message: string, extra?: Record<string, unknown>) {
     await client.app
@@ -78,7 +65,7 @@ function createPluginLogger(client: PluginInput["client"]): PluginLogger {
         },
       })
       .catch(() => {
-        // Avoid masking the real workspace error if diagnostic logging fails.
+        // Logging must not mask the workspace error being reported.
       })
   }
 

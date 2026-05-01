@@ -41,17 +41,13 @@ export const E2BWorkspacePlugin: Plugin = async (
   const logger = createPluginLogger(client)
   let options: E2BWorkspacePluginOptions | undefined
 
-  // OpenCode loads plugin options from user-controlled JSON, so we shape-check
-  // them before any of the runtime code trusts field types. Failing here
-  // surfaces the problem at plugin load time rather than deep inside an E2B
-  // SDK call during workspace creation.
+  // OpenCode loads plugin options from user-controlled JSON, so shape-check
+  // them before any workspace lifecycle code trusts field types. Keep plugin
+  // load side-effect-light: commands such as `opencode debug config` load
+  // plugins before a local controller is guaranteed to be listening, so
+  // network/runtime probes belong in configure/create/target.
   try {
     options = validatePluginOptions(rawOptions)
-    // Fail fast if the E2B credential is missing. The SDK would otherwise throw
-    // a generic AuthenticationError only when the first Sandbox.create call
-    // runs, by which point the user has already committed to the workflow.
-    assertE2BApiKeyAvailable()
-    await resolveLocalRuntimeVersion(serverUrl, logger)
   } catch (error) {
     await logger.error("plugin load failed", {
       error: errorMessage(error),
@@ -76,9 +72,11 @@ export const E2BWorkspacePlugin: Plugin = async (
       return configureWorkspace(info, options, serverUrl, logger)
     },
     async create(info, env) {
+      assertE2BApiKeyAvailable()
       await createWorkspace(info, env, directory, options, serverUrl, logger)
     },
     async remove(info) {
+      assertE2BApiKeyAvailable()
       const config = resolveWorkspaceConfig(info, options)
       await removeWorkspaceSandbox(info, config)
       if (gcConfig.enabled) {
@@ -86,6 +84,7 @@ export const E2BWorkspacePlugin: Plugin = async (
       }
     },
     async target(info) {
+      assertE2BApiKeyAvailable()
       const localRuntimeVersion = await resolveLocalRuntimeVersion(serverUrl, logger)
       const config = resolveWorkspaceConfig(info, options)
       const compatibility = resolveWorkspaceCompatibility(info, config, localRuntimeVersion)

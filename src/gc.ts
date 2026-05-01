@@ -92,26 +92,13 @@ async function performGC(config: ResolvedGCConfig, logger?: PluginLogger): Promi
   })
   const templates = await listTemplates(client, logger)
   const managedTemplates = templates.filter(isManagedTemplate)
-  const readyTemplates = managedTemplates.filter((entry) => entry.buildStatus === "ready")
-  const staleTemplates = readyTemplates.flatMap((entry) => {
-    const alias = firstManagedAlias(entry)
-    if (!alias) {
-      return []
-    }
-
-    const ageMs = startedAt - freshness(entry)
-    if (ageMs <= config.ttlMs) {
-      return []
-    }
-
-    return [{ entry, alias, ageMs } satisfies StaleTemplateCandidate]
-  })
-  const skippedInFlight = managedTemplates.length - readyTemplates.length
+  const staleTemplates = selectStaleManagedTemplates(templates, startedAt, config.ttlMs)
+  const skippedInFlight = managedTemplates.filter((entry) => entry.buildStatus !== "ready").length
 
   await logger?.info("template gc listed templates", {
     total: templates.length,
     managed: managedTemplates.length,
-    ready: readyTemplates.length,
+    ready: managedTemplates.length - skippedInFlight,
     stale: staleTemplates.length,
   })
 
@@ -132,6 +119,26 @@ async function performGC(config: ResolvedGCConfig, logger?: PluginLogger): Promi
     failed,
     skippedInFlight,
     durationMs: Date.now() - startedAt,
+  })
+}
+
+export function selectStaleManagedTemplates(
+  templates: E2BTemplateListEntry[],
+  now: number,
+  ttlMs: number,
+): StaleTemplateCandidate[] {
+  return templates.flatMap((entry) => {
+    const alias = firstManagedAlias(entry)
+    if (!alias || entry.buildStatus !== "ready") {
+      return []
+    }
+
+    const ageMs = now - freshness(entry)
+    if (ageMs <= ttlMs) {
+      return []
+    }
+
+    return [{ entry, alias, ageMs }]
   })
 }
 

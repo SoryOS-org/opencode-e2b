@@ -62,8 +62,8 @@ function buildSandboxMetadata(
  * command. The per-workspace envs OpenCode delivers via `adaptor.create` are
  * written to a sandbox-local env file in bootstrap.ts, which the baked start
  * command sources before exec'ing opencode. Setting `envs` here in addition
- * would just duplicate that delivery for the (currently empty) set of
- * `commands.run` callers that care about inherited envs.
+ * would duplicate delivery for commands that explicitly receive env through
+ * `sandbox.commands.run`.
  */
 export async function createWorkspaceSandbox(
   info: WorkspaceInfo,

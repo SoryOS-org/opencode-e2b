@@ -58,7 +58,7 @@ function requireObject(
   validateFields: (value: Record<string, unknown>) => void,
 ): void {
   if (value === undefined) return
-  if (!isPlainObject(value)) {
+  if (!isObjectRecord(value)) {
     errors.push(`${fieldName} must be an object`)
     return
   }
@@ -100,7 +100,7 @@ function requireStringArray(value: unknown, fieldName: string, errors: string[])
 
 function requireStringRecord(value: unknown, fieldName: string, errors: string[]): void {
   if (value === undefined) return
-  if (!isPlainObject(value)) {
+  if (!isObjectRecord(value)) {
     errors.push(`${fieldName} must be an object mapping strings to strings`)
     return
   }
@@ -111,6 +111,6 @@ function requireStringRecord(value: unknown, fieldName: string, errors: string[]
   }
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value))
 }

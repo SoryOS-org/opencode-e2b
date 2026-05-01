@@ -128,6 +128,7 @@ async function waitForServerReady(sandbox: Sandbox, config: NormalizedE2BWorkspa
       })
       ready = response.ok
     } catch {
+      // Retry transient startup failures until the readiness timeout expires.
     } finally {
       if (response && !response.bodyUsed) {
         await response.body?.cancel().catch(() => {})

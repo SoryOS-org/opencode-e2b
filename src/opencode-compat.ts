@@ -1,8 +1,8 @@
-import type { WorkspaceAdaptor, WorkspaceInfo } from "@opencode-ai/plugin"
+import type { WorkspaceAdapter, WorkspaceInfo } from "@opencode-ai/plugin"
 
-import type { RuntimeWorkspaceAdaptor } from "./types.js"
+import type { RuntimeWorkspaceAdapter } from "./types.js"
 
-type WorkspaceAdaptorWithRuntimeEnv = Omit<WorkspaceAdaptor, "create"> & {
+type WorkspaceAdapterWithRuntimeEnv = Omit<WorkspaceAdapter, "create"> & {
   create(
     info: WorkspaceInfo,
     envOrFrom?: Record<string, string | undefined> | WorkspaceInfo,
@@ -10,22 +10,22 @@ type WorkspaceAdaptorWithRuntimeEnv = Omit<WorkspaceAdaptor, "create"> & {
   ): Promise<void>
 }
 
-export function toPublishedWorkspaceAdaptor(adaptor: RuntimeWorkspaceAdaptor): WorkspaceAdaptor {
-  const published: WorkspaceAdaptorWithRuntimeEnv = {
-    name: adaptor.name,
-    description: adaptor.description,
+export function toPublishedWorkspaceAdapter(adapter: RuntimeWorkspaceAdapter): WorkspaceAdapter {
+  const published: WorkspaceAdapterWithRuntimeEnv = {
+    name: adapter.name,
+    description: adapter.description,
     configure(info) {
-      return adaptor.configure(info)
+      return adapter.configure(info)
     },
     create(info, envOrFrom) {
       const env = isWorkspaceInfo(envOrFrom) ? {} : envOrFrom
-      return adaptor.create(info, env ?? {})
+      return adapter.create(info, env ?? {})
     },
     remove(info) {
-      return adaptor.remove(info)
+      return adapter.remove(info)
     },
     target(info) {
-      return adaptor.target(info)
+      return adapter.target(info)
     },
   }
 

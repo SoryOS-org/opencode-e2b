@@ -20,11 +20,11 @@ import type {
   E2BWorkspacePluginOptions,
   NormalizedE2BWorkspaceConfig,
   PluginLogger,
-  RuntimeWorkspaceAdaptor,
+  RuntimeWorkspaceAdapter,
 } from "./types.js"
 import { createWorkspace } from "./workspace-create.js"
 
-type WorkspaceAdaptorDeps = {
+type WorkspaceAdapterDeps = {
   directory: string
   serverUrl: URL
   options: E2BWorkspacePluginOptions | undefined
@@ -32,7 +32,7 @@ type WorkspaceAdaptorDeps = {
   gcConfig: NormalizedE2BWorkspaceConfig["templateGc"]
 }
 
-export function createE2BWorkspaceAdaptor(deps: WorkspaceAdaptorDeps): RuntimeWorkspaceAdaptor {
+export function createE2BWorkspaceAdapter(deps: WorkspaceAdapterDeps): RuntimeWorkspaceAdapter {
   return {
     name: "E2B Sandbox",
     description: "Provision a sandboxed OpenCode workspace in E2B",

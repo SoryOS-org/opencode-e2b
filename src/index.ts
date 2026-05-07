@@ -2,10 +2,10 @@ import type { Plugin, PluginInput } from "@opencode-ai/plugin"
 
 import { normalizeOptions, validatePluginOptions, warnDeprecatedBootstrapOptions } from "./config.js"
 import { runTemplateGC } from "./gc.js"
-import { toPublishedWorkspaceAdaptor } from "./opencode-compat.js"
+import { toPublishedWorkspaceAdapter } from "./opencode-compat.js"
 import { errorMessage } from "./shared.js"
 import type { E2BWorkspacePluginOptions, PluginLogger } from "./types.js"
-import { createE2BWorkspaceAdaptor } from "./workspace.js"
+import { createE2BWorkspaceAdapter } from "./workspace.js"
 
 export const E2BWorkspacePlugin: Plugin = async (
   { client, directory, experimental_workspace, serverUrl },
@@ -32,7 +32,7 @@ export const E2BWorkspacePlugin: Plugin = async (
   await warnDeprecatedBootstrapOptions(options, logger)
   const gcConfig = normalizeOptions(options).templateGc
 
-  const adaptor = createE2BWorkspaceAdaptor({
+  const adapter = createE2BWorkspaceAdapter({
     directory,
     serverUrl,
     options,
@@ -40,7 +40,7 @@ export const E2BWorkspacePlugin: Plugin = async (
     gcConfig,
   })
 
-  experimental_workspace.register("e2b", toPublishedWorkspaceAdaptor(adaptor))
+  experimental_workspace.register("e2b", toPublishedWorkspaceAdapter(adapter))
 
   if (gcConfig.enabled) {
     void runTemplateGC(gcConfig, logger).catch(() => {})

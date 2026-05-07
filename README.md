@@ -59,7 +59,7 @@ OpenCode persists `configure()` before `create()`, so the plugin does not store 
 
 ## Compatibility
 
-- Minimum supported OpenCode runtime: `1.14.20`.
+- Minimum supported OpenCode runtime: `1.14.32`.
 - The local runtime version is probed from `PluginInput.serverUrl`.
 - The remote runtime version is probed from the sandbox `/global/health` endpoint.
 - Reuse requires a matching workspace API version and a remote runtime at or above the supported floor.

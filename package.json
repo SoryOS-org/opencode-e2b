@@ -6,6 +6,9 @@
   "description": "OpenCode workspace plugin for provisioning E2B sandboxes",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "engines": {
+    "opencode": ">=1.14.32"
+  },
   "files": [
     "dist"
   ],
@@ -19,7 +22,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "@opencode-ai/plugin": "1.4.11",
+    "@opencode-ai/plugin": "1.14.39",
     "e2b": "2.19.0"
   },
   "devDependencies": {

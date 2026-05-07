@@ -83,7 +83,7 @@ export type PersistedWorkspaceExtra = {
   }
 }
 
-export type RuntimeWorkspaceAdaptor = {
+export type RuntimeWorkspaceAdapter = {
   name: string
   description: string
   configure(info: WorkspaceInfo): WorkspaceInfo | Promise<WorkspaceInfo>

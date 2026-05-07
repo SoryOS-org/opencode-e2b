@@ -33,6 +33,7 @@ export const E2BWorkspacePlugin: Plugin = async (
   const gcConfig = normalizeOptions(options).templateGc
 
   const adapter = createE2BWorkspaceAdapter({
+    client,
     directory,
     serverUrl,
     options,

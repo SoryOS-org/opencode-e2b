@@ -1,7 +1,11 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { meetsRuntimeFloor } from "../dist/runtime.js"
+import {
+  clearLocalRuntimeVersionCacheForTest,
+  meetsRuntimeFloor,
+  resolveLocalRuntimeVersion,
+} from "../dist/runtime.js"
 
 test("meetsRuntimeFloor accepts versions equal to or newer than the floor", () => {
   assert.equal(meetsRuntimeFloor("1.14.20", "1.14.20"), true)
@@ -26,4 +30,28 @@ test("meetsRuntimeFloor rejects non-semver prefixes", () => {
   assert.throws(() => meetsRuntimeFloor("v1.14.20", "1.14.20"), /numeric MAJOR\.MINOR\.PATCH/)
   assert.throws(() => meetsRuntimeFloor("1.14", "1.14.20"), /numeric MAJOR\.MINOR\.PATCH/)
   assert.throws(() => meetsRuntimeFloor("1.14.20dev", "1.14.20"), /numeric MAJOR\.MINOR\.PATCH/)
+})
+
+test("resolveLocalRuntimeVersion uses the injected OpenCode client transport", async () => {
+  clearLocalRuntimeVersionCacheForTest()
+  let requested
+  const client = {
+    _client: {
+      async get(options) {
+        requested = options
+        return {
+          data: {
+            healthy: true,
+            version: "1.14.39",
+          },
+        }
+      },
+    },
+  }
+
+  const version = await resolveLocalRuntimeVersion(new URL("http://127.0.0.1:1"), undefined, client)
+
+  assert.equal(version, "1.14.39")
+  assert.equal(requested.url, "/global/health")
+  assert.ok(requested.signal instanceof AbortSignal)
 })

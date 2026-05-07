@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { buildManagedTemplateAlias, MANAGED_TEMPLATE_PREFIX } from "../dist/template.js"
+import { buildManagedTemplateAlias, buildOpenCodeInstallCommand, MANAGED_TEMPLATE_PREFIX } from "../dist/template.js"
 
 const baseInputs = {
   nodeVariant: "22-slim",
@@ -32,4 +32,11 @@ test("buildManagedTemplateAlias includes a normalized readable node segment", ()
   })
 
   assert.match(alias, new RegExp(`^${MANAGED_TEMPLATE_PREFIX}node-22-slim-[a-f0-9]{12}$`))
+})
+
+test("buildOpenCodeInstallCommand forces optional binary dependencies", () => {
+  assert.equal(
+    buildOpenCodeInstallCommand("1.14.39"),
+    "npm install -g --include=optional opencode-ai@1.14.39",
+  )
 })

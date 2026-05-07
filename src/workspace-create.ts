@@ -1,4 +1,4 @@
-import type { WorkspaceInfo } from "@opencode-ai/plugin"
+import type { PluginInput, WorkspaceInfo } from "@opencode-ai/plugin"
 
 import { bootstrapWorkspace } from "./bootstrap.js"
 import { buildFreshCompatibility, resolveWorkspaceCompatibility, resolveWorkspaceConfig } from "./config.js"
@@ -30,6 +30,7 @@ export async function createWorkspace(params: {
   localDirectory: string
   options: E2BWorkspacePluginOptions | undefined
   serverUrl: URL
+  client: PluginInput["client"]
   logger?: PluginLogger
 }): Promise<void> {
   const config = resolveWorkspaceConfig(params.info, params.options)
@@ -43,7 +44,7 @@ export async function createWorkspace(params: {
   })
 
   try {
-    const runtimeVersion = await resolveLocalRuntimeVersion(params.serverUrl, params.logger)
+    const runtimeVersion = await resolveLocalRuntimeVersion(params.serverUrl, params.logger, params.client)
     await params.logger?.info("create workspace resolved local runtime", {
       workspaceID: params.info.id,
       runtimeVersion,

@@ -1,4 +1,4 @@
-import type { WorkspaceInfo } from "@opencode-ai/plugin"
+import type { PluginInput, WorkspaceInfo } from "@opencode-ai/plugin"
 
 import {
   buildPersistedExtra,
@@ -25,6 +25,7 @@ import type {
 import { createWorkspace } from "./workspace-create.js"
 
 type WorkspaceAdapterDeps = {
+  client: PluginInput["client"]
   directory: string
   serverUrl: URL
   options: E2BWorkspacePluginOptions | undefined
@@ -37,7 +38,7 @@ export function createE2BWorkspaceAdapter(deps: WorkspaceAdapterDeps): RuntimeWo
     name: "E2B Sandbox",
     description: "Provision a sandboxed OpenCode workspace in E2B",
     async configure(info) {
-      return configureWorkspace(info, deps.options, deps.serverUrl, deps.logger)
+      return configureWorkspace(info, deps.options, deps.serverUrl, deps.logger, deps.client)
     },
     async create(info, env) {
       assertE2BApiKeyAvailable()
@@ -47,6 +48,7 @@ export function createE2BWorkspaceAdapter(deps: WorkspaceAdapterDeps): RuntimeWo
         localDirectory: deps.directory,
         options: deps.options,
         serverUrl: deps.serverUrl,
+        client: deps.client,
         logger: deps.logger,
       })
     },
@@ -64,6 +66,7 @@ export function createE2BWorkspaceAdapter(deps: WorkspaceAdapterDeps): RuntimeWo
         info,
         options: deps.options,
         serverUrl: deps.serverUrl,
+        client: deps.client,
         logger: deps.logger,
       })
     },
@@ -75,6 +78,7 @@ async function configureWorkspace(
   options: E2BWorkspacePluginOptions | undefined,
   serverUrl: URL,
   logger: PluginLogger,
+  client: PluginInput["client"],
 ): Promise<WorkspaceInfo> {
   const config = normalizeOptions(options)
   await logger.info("configure workspace start", {
@@ -83,7 +87,7 @@ async function configureWorkspace(
     projectPath: config.projectPath,
     nodeVariant: config.nodeVariant,
   })
-  const runtimeVersion = await resolveLocalRuntimeVersion(serverUrl, logger)
+  const runtimeVersion = await resolveLocalRuntimeVersion(serverUrl, logger, client)
 
   await logger.info("configure workspace resolved local runtime", {
     workspaceID: info.id,
@@ -102,9 +106,10 @@ async function resolveWorkspaceTarget(params: {
   info: WorkspaceInfo
   options: E2BWorkspacePluginOptions | undefined
   serverUrl: URL
+  client: PluginInput["client"]
   logger: PluginLogger
 }): Promise<{ type: "remote"; url: URL; headers?: HeadersInit }> {
-  const localRuntimeVersion = await resolveLocalRuntimeVersion(params.serverUrl, params.logger)
+  const localRuntimeVersion = await resolveLocalRuntimeVersion(params.serverUrl, params.logger, params.client)
   const config = resolveWorkspaceConfig(params.info, params.options)
   const compatibility = resolveWorkspaceCompatibility(params.info, config, localRuntimeVersion)
   const record = await requireWorkspaceSandboxRecord(params.info, config)

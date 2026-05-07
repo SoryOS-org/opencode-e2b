@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises"
 
+import type { PluginInput } from "@opencode-ai/plugin"
 import { Sandbox } from "e2b"
 
 import { CURRENT_WORKSPACE_API_VERSION } from "./config.js"
@@ -29,11 +30,12 @@ export function forgetSandboxCompatibility(sandboxId: string): void {
  * health endpoint used for remote sandboxes. The result is memoized, but a
  * failed probe clears the cache so the next lifecycle call can retry.
  */
-export async function resolveLocalRuntimeVersion(serverUrl: URL, logger?: PluginLogger): Promise<string> {
-  installedRuntimeVersionPromise ??= fetchRemoteRuntimeHealth(serverUrl, {
-    target: "local-controller",
-    logger,
-  })
+export async function resolveLocalRuntimeVersion(
+  serverUrl: URL,
+  logger?: PluginLogger,
+  client?: PluginInput["client"],
+): Promise<string> {
+  installedRuntimeVersionPromise ??= fetchLocalRuntimeHealth(serverUrl, logger, client)
     .then((health) => {
       assertRuntimeMeetsFloor(health.version, MINIMUM_SUPPORTED_RUNTIME_VERSION, "local controller")
       return health.version
@@ -44,6 +46,88 @@ export async function resolveLocalRuntimeVersion(serverUrl: URL, logger?: Plugin
     })
 
   return installedRuntimeVersionPromise
+}
+
+export function clearLocalRuntimeVersionCacheForTest(): void {
+  installedRuntimeVersionPromise = undefined
+}
+
+async function fetchLocalRuntimeHealth(
+  serverUrl: URL,
+  logger: PluginLogger | undefined,
+  client: PluginInput["client"] | undefined,
+): Promise<{ healthy: true; version: string }> {
+  try {
+    return await fetchRuntimeHealthWithClient(client, logger)
+  } catch (error) {
+    await logger?.warn("runtime health client probe failed; falling back to serverUrl", {
+      healthUrl: "/global/health",
+      serverUrl: serverUrl.toString(),
+      error: errorMessage(error),
+    })
+  }
+
+  return fetchRemoteRuntimeHealth(serverUrl, {
+    target: "local-controller",
+    logger,
+  })
+}
+
+async function fetchRuntimeHealthWithClient(
+  client: PluginInput["client"] | undefined,
+  logger: PluginLogger | undefined,
+): Promise<{ healthy: true; version: string }> {
+  const rawClient = (client as unknown as { _client?: RuntimeHealthClient } | undefined)?._client
+  if (!rawClient) {
+    throw new Error("OpenCode SDK client does not expose a raw request client")
+  }
+
+  const healthUrl = "/global/health"
+  const startedAt = Date.now()
+
+  await logger?.info("runtime health client probe start", {
+    target: "local-controller",
+    healthUrl,
+    timeoutMs: HEALTH_TIMEOUT_MS,
+  })
+
+  const result = await rawClient.get({
+    url: healthUrl,
+    signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+  })
+  const payload = unwrapSdkData(result)
+  if (!payload || typeof payload !== "object") {
+    throw new Error("Unexpected health payload from OpenCode SDK client")
+  }
+
+  const health = payload as Partial<{ healthy: boolean; version: unknown }>
+  if (health.healthy !== true || typeof health.version !== "string") {
+    throw new Error("Unexpected health payload from OpenCode SDK client")
+  }
+
+  await logger?.info("runtime health client probe success", {
+    target: "local-controller",
+    healthUrl,
+    durationMs: Date.now() - startedAt,
+    version: health.version,
+  })
+
+  return {
+    healthy: true,
+    version: health.version,
+  }
+}
+
+type RuntimeHealthClient = {
+  get(options: { url: string; signal?: AbortSignal }): Promise<unknown>
+}
+
+function unwrapSdkData(result: unknown): unknown {
+  if (result && typeof result === "object" && "data" in result) {
+    return (result as { data?: unknown }).data
+  }
+
+  return result
 }
 
 export async function resolveLocalPluginVersion(): Promise<string> {

@@ -72,7 +72,7 @@ async function buildManagedWorkspaceTemplate(
     alias,
   })
 
-  if (await Template.exists(alias)) {
+  if (await templateHasDefaultTag(alias)) {
     await logger?.info("managed template reuse", {
       alias,
     })
@@ -87,7 +87,7 @@ async function buildManagedWorkspaceTemplate(
 
   const template = Template()
     .fromNodeImage(inputs.nodeVariant)
-    .runCmd(`npm install -g opencode-ai@${inputs.runtimeVersion}`, { user: "root" })
+    .runCmd(buildOpenCodeInstallCommand(inputs.runtimeVersion), { user: "root" })
     .setStartCmd(
       buildBakedStartCommand(inputs.projectPath, inputs.serverPort),
       // E2B polls the ready command during `Sandbox.create()`. Because our
@@ -107,7 +107,7 @@ async function buildManagedWorkspaceTemplate(
     })
     return alias
   } catch (error) {
-    if (await Template.exists(alias).catch(() => false)) {
+    if (await templateHasDefaultTag(alias)) {
       await logger?.warn("managed template build raced with existing alias", {
         alias,
         error: errorMessage(error),
@@ -119,6 +119,18 @@ async function buildManagedWorkspaceTemplate(
       `Failed to build managed E2B template ${alias} from node image ${inputs.nodeVariant}: ${errorMessage(error)}`,
     )
   }
+}
+
+async function templateHasDefaultTag(alias: string): Promise<boolean> {
+  try {
+    return (await Template.getTags(alias)).some((item) => item.tag === "default")
+  } catch {
+    return false
+  }
+}
+
+export function buildOpenCodeInstallCommand(runtimeVersion: string): string {
+  return `npm install -g --include=optional opencode-ai@${runtimeVersion}`
 }
 
 /**

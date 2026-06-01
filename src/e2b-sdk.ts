@@ -53,6 +53,23 @@ export async function listE2BTemplates(client: ApiClient): Promise<E2BTemplateLi
   return response.data as E2BTemplateListEntry[]
 }
 
+export async function deleteE2BTemplate(client: ApiClient, templateID: string): Promise<void> {
+  const response = await client.api.DELETE("/templates/{templateID}", {
+    params: {
+      path: {
+        templateID,
+      },
+    },
+  })
+  const status = response.response.status
+
+  if ((status >= 200 && status < 300) || status === 404) {
+    return
+  }
+
+  throw new E2BApiStatusError("Template delete", status, response.error ?? `Unexpected status ${status}`)
+}
+
 export function findE2BTemplateByAlias(
   templates: E2BTemplateListEntry[],
   alias: string,

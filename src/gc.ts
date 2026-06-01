@@ -2,6 +2,7 @@ import type { ApiClient } from "e2b"
 
 import {
   createE2BApiClient,
+  deleteE2BTemplate,
   E2BApiStatusError,
   type E2BTemplateListEntry,
   listE2BTemplates,
@@ -161,30 +162,13 @@ async function deleteTemplate(
   logger?: PluginLogger,
 ): Promise<boolean> {
   try {
-    const response = await client.api.DELETE("/templates/{templateID}", {
-      params: {
-        path: {
-          templateID: candidate.entry.templateID,
-        },
-      },
-    })
-    const status = response.response.status
-
-    if ((status >= 200 && status < 300) || status === 404) {
-      await logger?.info("template gc deleted", {
-        templateID: candidate.entry.templateID,
-        alias: candidate.alias,
-        ageMs: candidate.ageMs,
-      })
-      return true
-    }
-
-    await logger?.warn("template gc delete failed", {
+    await deleteE2BTemplate(client, candidate.entry.templateID)
+    await logger?.info("template gc deleted", {
       templateID: candidate.entry.templateID,
-      status,
-      error: errorMessage(response.error ?? `Unexpected status ${status}`),
+      alias: candidate.alias,
+      ageMs: candidate.ageMs,
     })
-    return false
+    return true
   } catch (error) {
     await logger?.warn("template gc delete failed", {
       templateID: candidate.entry.templateID,

@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto"
+import { setTimeout as sleep } from "node:timers/promises"
 
 import { Template } from "e2b"
 
 import {
   createE2BApiClient,
   createE2BConnectionOptions,
+  deleteE2BTemplate,
   findE2BTemplateByAlias,
   isE2BNotFoundError,
   listE2BTemplates,
@@ -35,11 +37,17 @@ export const RUNTIME_ENV_FILE = "/tmp/.opencode-e2b.env"
 
 const managedTemplatePromises = new Map<string, Promise<string>>()
 const PREBUILT_OPENCODE_TEMPLATE_NAME = "opencode"
+const MANAGED_TEMPLATE_READY_TIMEOUT_MS = 30 * 60 * 1000
+const MANAGED_TEMPLATE_READY_POLL_MS = 5 * 1000
+const MANAGED_TEMPLATE_READY_MAX_POLL_MS = 30 * 1000
 
 type ManagedTemplateState =
   | { kind: "missing" }
   | { kind: "ready"; template: E2BTemplateListEntry }
-  | { kind: "not-ready"; template: E2BTemplateListEntry }
+  | { kind: "pending"; template: E2BTemplateListEntry }
+  | { kind: "failed"; template: E2BTemplateListEntry }
+
+type ManagedBuildRaceResolution = "reuse" | "retry" | "unresolved"
 
 export type ManagedTemplateInputs = {
   nodeVariant: string
@@ -139,6 +147,17 @@ async function buildManagedWorkspaceTemplate(
     })
     return alias
   }
+  if (existingTemplate.kind === "pending") {
+    await logger?.info("managed template build already in progress", {
+      alias,
+      buildStatus: existingTemplate.template.buildStatus,
+    })
+    await waitForManagedTemplateReady(alias, logger)
+    return alias
+  }
+  if (existingTemplate.kind === "failed") {
+    await deleteFailedManagedTemplate(alias, existingTemplate.template, logger)
+  }
 
   await logger?.info("managed template build start", {
     nodeVariant: inputs.nodeVariant,
@@ -162,14 +181,27 @@ async function buildManagedWorkspaceTemplate(
     )
 
   try {
-    await Template.build(template, alias, createE2BConnectionOptions(logger))
+    await buildManagedTemplateOnce(template, alias, logger)
     await logger?.info("managed template build complete", {
       alias,
     })
     return alias
   } catch (error) {
-    const racedTemplate = await findManagedTemplateState(alias, logger)
-    if (racedTemplate.kind === "ready") {
+    const raceResolution = await resolveManagedTemplateBuildRace(alias, logger)
+    if (raceResolution === "retry") {
+      try {
+        await buildManagedTemplateOnce(template, alias, logger)
+        await logger?.info("managed template build complete", {
+          alias,
+        })
+        return alias
+      } catch (retryError) {
+        throw new Error(
+          `Failed to build managed E2B template ${alias} from node image ${inputs.nodeVariant}: ${errorMessage(retryError)}`,
+        )
+      }
+    }
+    if (raceResolution === "reuse") {
       await logger?.warn("managed template build raced with existing alias", {
         alias,
         error: errorMessage(error),
@@ -212,6 +244,13 @@ async function findManagedTemplateState(alias: string, logger?: PluginLogger): P
     return { kind: "missing" }
   }
 
+  return findListedManagedTemplateState(alias, logger)
+}
+
+async function findListedManagedTemplateState(
+  alias: string,
+  logger?: PluginLogger,
+): Promise<ManagedTemplateState> {
   const client = createE2BApiClient(logger)
   const templates = await listE2BTemplates(client)
   const template = findE2BTemplateByAlias(templates, alias)
@@ -219,11 +258,87 @@ async function findManagedTemplateState(alias: string, logger?: PluginLogger): P
     return { kind: "missing" }
   }
 
-  if (template.buildStatus !== "ready") {
-    return { kind: "not-ready", template }
+  if (template.buildStatus === "ready") {
+    return { kind: "ready", template }
+  }
+  if (template.buildStatus === "error") {
+    return { kind: "failed", template }
   }
 
-  return { kind: "ready", template }
+  return { kind: "pending", template }
+}
+
+async function resolveManagedTemplateBuildRace(
+  alias: string,
+  logger?: PluginLogger,
+): Promise<ManagedBuildRaceResolution> {
+  const state = await findManagedTemplateState(alias, logger)
+  if (state.kind === "ready") {
+    return "reuse"
+  }
+  if (state.kind === "pending") {
+    await logger?.info("managed template build raced with in-progress alias", {
+      alias,
+      buildStatus: state.template.buildStatus,
+    })
+    await waitForManagedTemplateReady(alias, logger)
+    return "reuse"
+  }
+  if (state.kind === "failed") {
+    await deleteFailedManagedTemplate(alias, state.template, logger)
+    return "retry"
+  }
+
+  return "unresolved"
+}
+
+async function waitForManagedTemplateReady(alias: string, logger?: PluginLogger): Promise<void> {
+  const startedAt = Date.now()
+  const deadline = startedAt + MANAGED_TEMPLATE_READY_TIMEOUT_MS
+  let delayMs = MANAGED_TEMPLATE_READY_POLL_MS
+
+  while (Date.now() < deadline) {
+    const state = await findListedManagedTemplateState(alias, logger)
+    if (state.kind === "ready") {
+      await logger?.info("managed template build became ready", {
+        alias,
+        durationMs: Date.now() - startedAt,
+      })
+      return
+    }
+    if (state.kind === "failed") {
+      throw new Error(`Managed E2B template ${alias} build failed while waiting`)
+    }
+    if (state.kind === "missing") {
+      throw new Error(`Managed E2B template ${alias} disappeared while waiting for build`)
+    }
+
+    await sleep(Math.min(delayMs, Math.max(deadline - Date.now(), 0)))
+    delayMs = Math.min(delayMs * 2, MANAGED_TEMPLATE_READY_MAX_POLL_MS)
+  }
+
+  throw new Error(`Timed out waiting for managed E2B template ${alias} to become ready`)
+}
+
+async function deleteFailedManagedTemplate(
+  alias: string,
+  template: E2BTemplateListEntry,
+  logger?: PluginLogger,
+): Promise<void> {
+  await logger?.warn("managed template previous build failed; deleting before rebuild", {
+    alias,
+    templateID: template.templateID,
+    buildStatus: template.buildStatus,
+  })
+  await deleteE2BTemplate(createE2BApiClient(logger), template.templateID)
+}
+
+async function buildManagedTemplateOnce(
+  template: Parameters<typeof Template.build>[0],
+  alias: string,
+  logger?: PluginLogger,
+): Promise<void> {
+  await Template.build(template, alias, createE2BConnectionOptions(logger))
 }
 
 /**

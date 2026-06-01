@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import test from "node:test"
+import { test } from "bun:test"
 
 import { MANAGED_TEMPLATE_PREFIX } from "../dist/template.js"
 import { selectStaleManagedTemplates } from "../dist/gc.js"

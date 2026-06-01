@@ -5,8 +5,8 @@ TypeScript plugin for OpenCode's experimental workspace API. It registers an `e2
 ## Install
 
 ```bash
-npm install
-npm run build
+bun install
+bun run build
 ```
 
 Register the built plugin in your OpenCode config:
@@ -35,12 +35,12 @@ E2B_API_KEY=... OPENCODE_EXPERIMENTAL_WORKSPACES=true opencode
 ## Development
 
 ```bash
-npm run format:check
-npm run typecheck
-npm test
+bun run format:check
+bun run typecheck
+bun run test
 ```
 
-`npm test` builds `dist/` first, then runs the Node test runner against `test/*.test.mjs`.
+The plugin is loaded by OpenCode's Bun runtime and uses Bun as its development runtime. `bun run test` builds `dist/` first, then runs the Bun test runner against `test/*.test.mjs`.
 
 ## Runtime Behavior
 
@@ -60,6 +60,7 @@ OpenCode persists `configure()` before `create()`, so the plugin does not store 
 ## Compatibility
 
 - Minimum supported OpenCode runtime: `1.14.32`.
+- Minimum supported Bun runtime: `1.3.0`.
 - The local runtime version is probed from `PluginInput.serverUrl`.
 - The remote runtime version is probed from the sandbox `/global/health` endpoint.
 - Reuse requires a matching workspace API version and a remote runtime at or above the supported floor.

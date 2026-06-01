@@ -36,7 +36,6 @@ const START_COMMAND_LOG_PATH = "/tmp/opencode-serve.log"
 export const RUNTIME_ENV_FILE = "/tmp/.opencode-e2b.env"
 
 const managedTemplatePromises = new Map<string, Promise<string>>()
-const PREBUILT_OPENCODE_TEMPLATE_NAME = "opencode"
 const MANAGED_TEMPLATE_READY_TIMEOUT_MS = 30 * 60 * 1000
 const MANAGED_TEMPLATE_READY_POLL_MS = 5 * 1000
 const MANAGED_TEMPLATE_READY_MAX_POLL_MS = 30 * 1000
@@ -61,11 +60,6 @@ export async function ensureManagedWorkspaceTemplate(
   inputs: ManagedTemplateInputs,
   logger?: PluginLogger,
 ): Promise<string> {
-  const prebuilt = await resolvePrebuiltOpenCodeTemplate(inputs, logger)
-  if (prebuilt) {
-    return prebuilt
-  }
-
   const alias = buildManagedTemplateAlias(inputs)
   const existing = managedTemplatePromises.get(alias)
   if (existing) {
@@ -83,47 +77,6 @@ export async function ensureManagedWorkspaceTemplate(
     }
     throw error
   }
-}
-
-async function resolvePrebuiltOpenCodeTemplate(
-  inputs: ManagedTemplateInputs,
-  logger?: PluginLogger,
-): Promise<string | undefined> {
-  const templateName = buildPrebuiltOpenCodeTemplateName(inputs.runtimeVersion)
-
-  await logger?.info("prebuilt template lookup start", {
-    templateName,
-    runtimeVersion: inputs.runtimeVersion,
-  })
-
-  let tags: Awaited<ReturnType<typeof Template.getTags>>
-  try {
-    tags = await Template.getTags(PREBUILT_OPENCODE_TEMPLATE_NAME, {
-      ...createE2BConnectionOptions(logger),
-    })
-  } catch (error) {
-    if (isE2BNotFoundError(error)) {
-      await logger?.info("prebuilt template missing; falling back to managed template", {
-        templateName,
-        error: errorMessage(error),
-      })
-      return undefined
-    }
-
-    throw new Error(`Failed to check for prebuilt E2B template ${templateName}: ${errorMessage(error)}`)
-  }
-
-  if (!tags.some((item) => item.tag === inputs.runtimeVersion)) {
-    await logger?.info("prebuilt template missing; falling back to managed template", {
-      templateName,
-    })
-    return undefined
-  }
-
-  await logger?.info("prebuilt template reuse", {
-    templateName,
-  })
-  return templateName
 }
 
 async function buildManagedWorkspaceTemplate(
@@ -236,7 +189,7 @@ export function buildOpenCodeInstallCommand(runtimeVersion: string): string {
 }
 
 export function buildPrebuiltOpenCodeTemplateName(runtimeVersion: string): string {
-  return `${PREBUILT_OPENCODE_TEMPLATE_NAME}:${runtimeVersion}`
+  return `e2b/opencode:${runtimeVersion}`
 }
 
 async function findManagedTemplateState(alias: string, logger?: PluginLogger): Promise<ManagedTemplateState> {

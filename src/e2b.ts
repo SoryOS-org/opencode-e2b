@@ -1,9 +1,10 @@
 import type { WorkspaceInfo } from "@opencode-ai/plugin"
-import { Sandbox, type SandboxState } from "e2b"
+import { AuthenticationError, RateLimitError, Sandbox, type SandboxOpts, type SandboxState } from "e2b"
 
 import { createE2BConnectionOptions } from "./e2b-sdk.js"
 import { forgetSandboxCompatibility } from "./runtime.js"
-import { ensureManagedWorkspaceTemplate } from "./template.js"
+import { errorMessage } from "./shared.js"
+import { buildPrebuiltOpenCodeTemplateName, ensureManagedWorkspaceTemplate } from "./template.js"
 import type {
   NormalizedE2BWorkspaceConfig,
   PersistedWorkspaceCompatibility,
@@ -30,6 +31,8 @@ type WorkspaceSandboxMatch = {
 type SandboxListOptionsWithLogger = NonNullable<Parameters<typeof Sandbox.list>[0]> &
   ReturnType<typeof createE2BConnectionOptions>
 
+type WorkspaceSandboxCreateOptions = SandboxOpts
+
 function buildSandboxMetadata(
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
@@ -53,7 +56,28 @@ export async function createWorkspaceSandbox(
   pluginPackageVersion: string,
   logger?: PluginLogger,
 ): Promise<Sandbox> {
-  const template = await ensureManagedWorkspaceTemplate(
+  const sandboxOptions = buildSandboxCreateOptions(info, config, compatibility, logger)
+  const prebuiltTemplate = buildPrebuiltOpenCodeTemplateName(runtimeVersion)
+
+  try {
+    await logger?.info("prebuilt sandbox create start", {
+      template: prebuiltTemplate,
+      runtimeVersion,
+    })
+    return await Sandbox.create(prebuiltTemplate, sandboxOptions)
+  } catch (error) {
+    if (!shouldFallbackFromPrebuiltSandboxError(error)) {
+      throw error
+    }
+
+    await logger?.warn("prebuilt sandbox create failed; falling back to managed template", {
+      template: prebuiltTemplate,
+      runtimeVersion,
+      error: errorMessage(error),
+    })
+  }
+
+  const managedTemplate = await ensureManagedWorkspaceTemplate(
     {
       nodeVariant: config.nodeVariant,
       runtimeVersion,
@@ -64,7 +88,16 @@ export async function createWorkspaceSandbox(
     logger,
   )
 
-  return Sandbox.create(template, {
+  return Sandbox.create(managedTemplate, sandboxOptions)
+}
+
+function buildSandboxCreateOptions(
+  info: WorkspaceInfo,
+  config: NormalizedE2BWorkspaceConfig,
+  compatibility: PersistedWorkspaceCompatibility,
+  logger?: PluginLogger,
+): WorkspaceSandboxCreateOptions {
+  return {
     ...createE2BConnectionOptions(logger),
     timeoutMs: config.sandboxTimeoutMs,
     metadata: buildSandboxMetadata(info, config, compatibility),
@@ -75,7 +108,11 @@ export async function createWorkspaceSandbox(
       denyOut: config.network.denyOut.length ? config.network.denyOut : undefined,
       maskRequestHost: config.network.maskRequestHost || undefined,
     },
-  })
+  }
+}
+
+function shouldFallbackFromPrebuiltSandboxError(error: unknown): boolean {
+  return !(error instanceof AuthenticationError) && !(error instanceof RateLimitError)
 }
 
 export async function findWorkspaceSandboxRecord(

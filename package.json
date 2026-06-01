@@ -22,7 +22,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "@opencode-ai/plugin": "1.14.39",
+    "@opencode-ai/plugin": "1.15.13",
     "e2b": "2.19.0"
   },
   "devDependencies": {

@@ -1,6 +1,7 @@
 import type { WorkspaceInfo } from "@opencode-ai/plugin"
-import { Sandbox } from "e2b"
+import { Sandbox, type SandboxState } from "e2b"
 
+import { createE2BConnectionOptions } from "./e2b-sdk.js"
 import { forgetSandboxCompatibility } from "./runtime.js"
 import { ensureManagedWorkspaceTemplate } from "./template.js"
 import type {
@@ -25,6 +26,9 @@ type WorkspaceSandboxMatch = {
   sandboxId: string
   metadata: Record<string, string>
 }
+
+type SandboxListOptionsWithLogger = NonNullable<Parameters<typeof Sandbox.list>[0]> &
+  ReturnType<typeof createE2BConnectionOptions>
 
 function buildSandboxMetadata(
   info: WorkspaceInfo,
@@ -61,6 +65,7 @@ export async function createWorkspaceSandbox(
   )
 
   return Sandbox.create(template, {
+    ...createE2BConnectionOptions(logger),
     timeoutMs: config.sandboxTimeoutMs,
     metadata: buildSandboxMetadata(info, config, compatibility),
     secure: config.secure,
@@ -76,8 +81,9 @@ export async function createWorkspaceSandbox(
 export async function findWorkspaceSandboxRecord(
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
+  logger?: PluginLogger,
 ): Promise<WorkspaceSandboxRecord | undefined> {
-  const matches = await listWorkspaceSandboxMatches(info)
+  const matches = await listWorkspaceSandboxMatches(info, logger)
   if (matches.length === 0) {
     return undefined
   }
@@ -92,25 +98,31 @@ export async function findWorkspaceSandboxRecord(
 
   return {
     sandbox: await Sandbox.connect(match.sandboxId, {
+      ...createE2BConnectionOptions(logger),
       timeoutMs: config.sandboxTimeoutMs,
     }),
     metadata: match.metadata,
   }
 }
 
-async function listWorkspaceSandboxMatches(info: WorkspaceInfo): Promise<WorkspaceSandboxMatch[]> {
-  const paginator = Sandbox.list({
-    query: {
-      metadata: {
-        [WORKSPACE_ID_METADATA_KEY]: info.id,
-      },
-      state: ["running", "paused"],
+async function listWorkspaceSandboxMatches(
+  info: WorkspaceInfo,
+  logger?: PluginLogger,
+): Promise<WorkspaceSandboxMatch[]> {
+  const query = {
+    metadata: {
+      [WORKSPACE_ID_METADATA_KEY]: info.id,
     },
+    state: ["running", "paused"] as SandboxState[],
+  }
+  const listOptions: SandboxListOptionsWithLogger = {
+    ...createE2BConnectionOptions(logger),
+    query,
     limit: 100,
-  })
+  }
+  const paginator = Sandbox.list(listOptions)
 
   const matches: WorkspaceSandboxMatch[] = []
-
   while (paginator.hasNext) {
     const sandboxes = await paginator.nextItems()
     for (const sandboxInfo of sandboxes) {
@@ -127,8 +139,9 @@ async function listWorkspaceSandboxMatches(info: WorkspaceInfo): Promise<Workspa
 export async function requireWorkspaceSandboxRecord(
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
+  logger?: PluginLogger,
 ): Promise<WorkspaceSandboxRecord> {
-  const record = await findWorkspaceSandboxRecord(info, config)
+  const record = await findWorkspaceSandboxRecord(info, config, logger)
   if (!record) {
     throw new Error(`No E2B sandbox found for workspace ${info.id}`)
   }
@@ -151,13 +164,15 @@ export function sandboxTargetHeaders(
 export async function removeWorkspaceSandbox(
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
+  logger?: PluginLogger,
 ): Promise<void> {
-  const matches = await listWorkspaceSandboxMatches(info)
+  const matches = await listWorkspaceSandboxMatches(info, logger)
   if (matches.length === 0) return
 
   await Promise.all(
     matches.map(async (match) => {
       const sandbox = await Sandbox.connect(match.sandboxId, {
+        ...createE2BConnectionOptions(logger),
         timeoutMs: config.sandboxTimeoutMs,
       })
       try {

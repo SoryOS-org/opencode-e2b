@@ -55,7 +55,7 @@ export function createE2BWorkspaceAdapter(deps: WorkspaceAdapterDeps): RuntimeWo
     async remove(info) {
       assertE2BApiKeyAvailable()
       const config = resolveWorkspaceConfig(info, deps.options)
-      await removeWorkspaceSandbox(info, config)
+      await removeWorkspaceSandbox(info, config, deps.logger)
       if (deps.gcConfig.enabled) {
         void runTemplateGC(deps.gcConfig, deps.logger).catch(() => {})
       }
@@ -112,7 +112,7 @@ async function resolveWorkspaceTarget(params: {
   const localRuntimeVersion = await resolveLocalRuntimeVersion(params.serverUrl, params.logger, params.client)
   const config = resolveWorkspaceConfig(params.info, params.options)
   const compatibility = resolveWorkspaceCompatibility(params.info, config, localRuntimeVersion)
-  const record = await requireWorkspaceSandboxRecord(params.info, config)
+  const record = await requireWorkspaceSandboxRecord(params.info, config, params.logger)
   const baseUrl = sandboxBaseUrl(record.sandbox, config)
   const headers = sandboxTargetHeaders(record.sandbox, config)
 

@@ -42,29 +42,22 @@ test("buildManagedTemplateAlias includes a normalized readable node segment", ()
   assert.match(alias, new RegExp(`^${MANAGED_TEMPLATE_PREFIX}node-22-slim-[a-f0-9]{12}$`))
 })
 
-test("buildOpenCodeInstallCommand forces optional binary dependencies", () => {
-  assert.equal(
-    buildOpenCodeInstallCommand("1.14.39"),
-    "npm install -g --include=optional opencode-ai@1.14.39",
-  )
+test("buildOpenCodeInstallCommand skips optional binary dependencies", () => {
+  assert.equal(buildOpenCodeInstallCommand("1.14.39"), "npm install -g --omit=optional opencode-ai@1.14.39")
 })
 
 test("buildPrebuiltOpenCodeTemplateName targets the runtime-specific published template", () => {
-  assert.equal(buildPrebuiltOpenCodeTemplateName("1.14.39"), "e2b/opencode:1.14.39")
+  assert.equal(buildPrebuiltOpenCodeTemplateName("1.14.39"), "opencode:1.14.39")
 })
 
 test("ensureManagedWorkspaceTemplate reuses a matching prebuilt template", async () => {
-  const originalExists = Template.exists
   const originalGetTags = Template.getTags
   const originalBuild = Template.build
   const calls = []
 
-  Template.exists = async (name) => {
-    calls.push(["exists", name])
-    return true
-  }
-  Template.getTags = async () => {
-    throw new Error("managed template lookup should not run")
+  Template.getTags = async (name) => {
+    calls.push(["getTags", name])
+    return [{ tag: "9.8.7" }]
   }
   Template.build = async () => {
     throw new Error("managed template build should not run")
@@ -77,17 +70,15 @@ test("ensureManagedWorkspaceTemplate reuses a matching prebuilt template", async
       pluginPackageVersion: "prebuilt-test",
     })
 
-    assert.equal(template, "e2b/opencode:9.8.7")
-    assert.deepEqual(calls, [["exists", "e2b/opencode:9.8.7"]])
+    assert.equal(template, "opencode:9.8.7")
+    assert.deepEqual(calls, [["getTags", "opencode"]])
   } finally {
-    Template.exists = originalExists
     Template.getTags = originalGetTags
     Template.build = originalBuild
   }
 })
 
 test("ensureManagedWorkspaceTemplate falls back to managed templates when prebuilt is absent", async () => {
-  const originalExists = Template.exists
   const originalGetTags = Template.getTags
   const originalBuild = Template.build
   const calls = []
@@ -97,16 +88,15 @@ test("ensureManagedWorkspaceTemplate falls back to managed templates when prebui
     pluginPackageVersion: "fallback-test",
   }
 
-  Template.exists = async (name) => {
-    calls.push(["exists", name])
-    return false
-  }
   Template.getTags = async (name) => {
     calls.push(["getTags", name])
-    return [{ tag: "default" }]
+    if (name === "opencode") {
+      return [{ tag: "9.8.5" }]
+    }
+    return []
   }
-  Template.build = async () => {
-    throw new Error("managed template build should not run when default tag exists")
+  Template.build = async (_template, name) => {
+    calls.push(["build", name])
   }
 
   try {
@@ -115,11 +105,11 @@ test("ensureManagedWorkspaceTemplate falls back to managed templates when prebui
 
     assert.equal(template, alias)
     assert.deepEqual(calls, [
-      ["exists", "e2b/opencode:9.8.6"],
+      ["getTags", "opencode"],
       ["getTags", alias],
+      ["build", alias],
     ])
   } finally {
-    Template.exists = originalExists
     Template.getTags = originalGetTags
     Template.build = originalBuild
   }

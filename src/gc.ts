@@ -1,5 +1,12 @@
-import { ApiClient, ConnectionConfig } from "e2b"
+import type { ApiClient } from "e2b"
 
+import {
+  createE2BApiClient,
+  E2BApiStatusError,
+  type E2BTemplateListEntry,
+  listE2BTemplates,
+  templateCandidateNames,
+} from "./e2b-sdk.js"
 import { errorMessage } from "./shared.js"
 import { MANAGED_TEMPLATE_PREFIX } from "./template.js"
 import type { E2BTemplateGCOptions, PluginLogger } from "./types.js"
@@ -11,16 +18,6 @@ export const DEFAULT_TEMPLATE_GC_COOLDOWN_MS = 10 * 60 * 1000
 const TEMPLATE_GC_DELETE_CONCURRENCY = 4
 
 type ResolvedGCConfig = Required<E2BTemplateGCOptions>
-
-type E2BTemplateListEntry = {
-  templateID: string
-  names?: string[]
-  aliases?: string[]
-  buildStatus?: string
-  lastSpawnedAt?: string | null
-  updatedAt?: string
-  createdAt?: string
-}
 
 type StaleTemplateCandidate = {
   entry: E2BTemplateListEntry
@@ -68,9 +65,7 @@ async function performGC(config: ResolvedGCConfig, logger?: PluginLogger): Promi
     cooldownMs: config.cooldownMs,
   })
 
-  const client = new ApiClient(new ConnectionConfig(), {
-    requireApiKey: true,
-  })
+  const client = createE2BApiClient(logger)
   const templates = await listTemplates(client, logger)
   const managedTemplates = templates.filter(isManagedTemplate)
   const staleTemplates = selectStaleManagedTemplates(templates, startedAt, config.ttlMs)
@@ -123,33 +118,14 @@ export function selectStaleManagedTemplates(
 
 async function listTemplates(client: ApiClient, logger?: PluginLogger): Promise<E2BTemplateListEntry[]> {
   try {
-    const response = await client.api.GET("/templates", {
-      params: {
-        query: {},
-      },
-    })
-    const status = response.response.status
-
-    if (status === 401 || status === 403) {
-      await logger?.warn("template gc list skipped due to auth failure", {
-        status,
-      })
-      return []
-    }
-
-    if (status >= 400) {
-      throw new Error(`Template list failed with status ${status}`)
-    }
-
-    if (!Array.isArray(response.data)) {
-      await logger?.warn("template gc list returned unexpected payload", {
-        status,
-      })
-      return []
-    }
-
-    return response.data as E2BTemplateListEntry[]
+    return await listE2BTemplates(client)
   } catch (error) {
+    if (error instanceof E2BApiStatusError && (error.status === 401 || error.status === 403)) {
+      await logger?.warn("template gc list skipped due to auth failure", {
+        status: error.status,
+      })
+      return []
+    }
     throw new Error(`Failed to list E2B templates: ${errorMessage(error)}`)
   }
 }
@@ -159,24 +135,7 @@ function isManagedTemplate(entry: E2BTemplateListEntry): boolean {
 }
 
 function firstManagedAlias(entry: E2BTemplateListEntry): string | undefined {
-  return listCandidateNames(entry)
-    .map(stripNamespace)
-    .find((name) => name.startsWith(MANAGED_TEMPLATE_PREFIX))
-}
-
-function listCandidateNames(entry: E2BTemplateListEntry): string[] {
-  if (Array.isArray(entry.names) && entry.names.length > 0) {
-    return entry.names
-  }
-  if (Array.isArray(entry.aliases)) {
-    return entry.aliases
-  }
-  return []
-}
-
-function stripNamespace(name: string): string {
-  const slashIndex = name.lastIndexOf("/")
-  return slashIndex >= 0 ? name.slice(slashIndex + 1) : name
+  return templateCandidateNames(entry).find((name) => name.startsWith(MANAGED_TEMPLATE_PREFIX))
 }
 
 function freshness(entry: E2BTemplateListEntry): number {

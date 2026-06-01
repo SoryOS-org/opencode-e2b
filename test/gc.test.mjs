@@ -71,3 +71,21 @@ test("selectStaleManagedTemplates falls back to aliases when names are absent", 
 
   assert.equal(stale[0].alias, `${MANAGED_TEMPLATE_PREFIX}node-legacy`)
 })
+
+test("selectStaleManagedTemplates checks aliases when names are present", () => {
+  const stale = selectStaleManagedTemplates(
+    [
+      {
+        templateID: "template-stale",
+        names: ["team/other-template"],
+        aliases: [`${MANAGED_TEMPLATE_PREFIX}node-alias`],
+        buildStatus: "ready",
+        createdAt: "2026-05-01T09:30:00.000Z",
+      },
+    ],
+    now,
+    ttlMs,
+  )
+
+  assert.equal(stale[0].alias, `${MANAGED_TEMPLATE_PREFIX}node-alias`)
+})

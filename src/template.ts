@@ -2,6 +2,14 @@ import { createHash } from "node:crypto"
 
 import { Template } from "e2b"
 
+import {
+  createE2BApiClient,
+  createE2BConnectionOptions,
+  findE2BTemplateByAlias,
+  isE2BNotFoundError,
+  listE2BTemplates,
+  type E2BTemplateListEntry,
+} from "./e2b-sdk.js"
 import { errorMessage, shellSingleQuote } from "./shared.js"
 import type { PluginLogger } from "./types.js"
 
@@ -26,6 +34,12 @@ const START_COMMAND_LOG_PATH = "/tmp/opencode-serve.log"
 export const RUNTIME_ENV_FILE = "/tmp/.opencode-e2b.env"
 
 const managedTemplatePromises = new Map<string, Promise<string>>()
+const PREBUILT_OPENCODE_TEMPLATE_NAME = "opencode"
+
+type ManagedTemplateState =
+  | { kind: "missing" }
+  | { kind: "ready"; template: E2BTemplateListEntry }
+  | { kind: "not-ready"; template: E2BTemplateListEntry }
 
 export type ManagedTemplateInputs = {
   nodeVariant: string
@@ -74,14 +88,24 @@ async function resolvePrebuiltOpenCodeTemplate(
     runtimeVersion: inputs.runtimeVersion,
   })
 
-  let exists: boolean
+  let tags: Awaited<ReturnType<typeof Template.getTags>>
   try {
-    exists = await Template.exists(templateName)
+    tags = await Template.getTags(PREBUILT_OPENCODE_TEMPLATE_NAME, {
+      ...createE2BConnectionOptions(logger),
+    })
   } catch (error) {
+    if (isE2BNotFoundError(error)) {
+      await logger?.info("prebuilt template missing; falling back to managed template", {
+        templateName,
+        error: errorMessage(error),
+      })
+      return undefined
+    }
+
     throw new Error(`Failed to check for prebuilt E2B template ${templateName}: ${errorMessage(error)}`)
   }
 
-  if (!exists) {
+  if (!tags.some((item) => item.tag === inputs.runtimeVersion)) {
     await logger?.info("prebuilt template missing; falling back to managed template", {
       templateName,
     })
@@ -108,7 +132,8 @@ async function buildManagedWorkspaceTemplate(
     alias,
   })
 
-  if (await templateHasDefaultTag(alias)) {
+  const existingTemplate = await findManagedTemplateState(alias, logger)
+  if (existingTemplate.kind === "ready") {
     await logger?.info("managed template reuse", {
       alias,
     })
@@ -137,13 +162,14 @@ async function buildManagedWorkspaceTemplate(
     )
 
   try {
-    await Template.build(template, alias)
+    await Template.build(template, alias, createE2BConnectionOptions(logger))
     await logger?.info("managed template build complete", {
       alias,
     })
     return alias
   } catch (error) {
-    if (await templateHasDefaultTag(alias)) {
+    const racedTemplate = await findManagedTemplateState(alias, logger)
+    if (racedTemplate.kind === "ready") {
       await logger?.warn("managed template build raced with existing alias", {
         alias,
         error: errorMessage(error),
@@ -157,20 +183,47 @@ async function buildManagedWorkspaceTemplate(
   }
 }
 
-async function templateHasDefaultTag(alias: string): Promise<boolean> {
+async function templateHasDefaultTag(alias: string, logger?: PluginLogger): Promise<boolean> {
   try {
-    return (await Template.getTags(alias)).some((item) => item.tag === "default")
-  } catch {
-    return false
+    return (
+      await Template.getTags(alias, {
+        ...createE2BConnectionOptions(logger),
+      })
+    ).some((item) => item.tag === "default")
+  } catch (error) {
+    if (isE2BNotFoundError(error)) {
+      return false
+    }
+
+    throw error
   }
 }
 
 export function buildOpenCodeInstallCommand(runtimeVersion: string): string {
-  return `npm install -g --include=optional opencode-ai@${runtimeVersion}`
+  return `npm install -g --omit=optional opencode-ai@${runtimeVersion}`
 }
 
 export function buildPrebuiltOpenCodeTemplateName(runtimeVersion: string): string {
-  return `e2b/opencode:${runtimeVersion}`
+  return `${PREBUILT_OPENCODE_TEMPLATE_NAME}:${runtimeVersion}`
+}
+
+async function findManagedTemplateState(alias: string, logger?: PluginLogger): Promise<ManagedTemplateState> {
+  if (!(await templateHasDefaultTag(alias, logger))) {
+    return { kind: "missing" }
+  }
+
+  const client = createE2BApiClient(logger)
+  const templates = await listE2BTemplates(client)
+  const template = findE2BTemplateByAlias(templates, alias)
+  if (!template) {
+    return { kind: "missing" }
+  }
+
+  if (template.buildStatus !== "ready") {
+    return { kind: "not-ready", template }
+  }
+
+  return { kind: "ready", template }
 }
 
 /**

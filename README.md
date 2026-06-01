@@ -44,7 +44,7 @@ npm test
 
 ## Runtime Behavior
 
-The plugin first looks for a published E2B template named `e2b/opencode:<runtimeVersion>`, where `<runtimeVersion>` is the local OpenCode runtime version. If that template exists, new sandboxes are created from it directly. Otherwise, the plugin falls back to creating E2B sandboxes from managed templates. A managed template is keyed by the Node image variant, the local OpenCode runtime version, project path, server port, and this plugin's package version.
+The plugin first looks for a published E2B template named `opencode:<runtimeVersion>`, where `<runtimeVersion>` is the local OpenCode runtime version. If that template exists, new sandboxes are created from it directly. Otherwise, the plugin falls back to creating E2B sandboxes from managed templates. A managed template is keyed by the Node image variant, the local OpenCode runtime version, project path, server port, and this plugin's package version.
 
 On workspace create, the plugin:
 

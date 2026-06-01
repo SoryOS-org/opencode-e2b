@@ -54,7 +54,7 @@ export async function createWorkspace(params: {
     const compatibility = resolveWorkspaceCompatibility(params.info, config, runtimeVersion)
 
     stage = "find-existing-sandbox"
-    const existingRecord = await findWorkspaceSandboxRecord(params.info, config)
+    const existingRecord = await findWorkspaceSandboxRecord(params.info, config, params.logger)
     const existingSandboxId = existingRecord?.sandbox.sandboxId
     if (existingRecord) {
       await params.logger?.info("create workspace found existing sandbox", {

@@ -6,7 +6,6 @@
   "description": "OpenCode workspace plugin for provisioning E2B sandboxes",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "packageManager": "bun@1.3.14",
   "engines": {
     "opencode": ">=1.14.32",
     "bun": ">=1.3.0"
@@ -28,7 +27,7 @@
     "e2b": "2.19.0"
   },
   "devDependencies": {
-    "@types/bun": "1.3.13",
+    "@types/bun": "^1.3.13",
     "@types/node": "24.5.2",
     "prettier": "^3.8.3",
     "typescript": "5.9.2"

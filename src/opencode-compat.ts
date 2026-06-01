@@ -7,6 +7,7 @@ type WorkspaceAdapterWithRuntimeEnv = Omit<WorkspaceAdapter, "create"> & {
     info: WorkspaceInfo,
     envOrFrom?: Record<string, string | undefined> | WorkspaceInfo,
     from?: WorkspaceInfo,
+    context?: unknown,
   ): Promise<void>
 }
 
@@ -17,9 +18,10 @@ export function toPublishedWorkspaceAdapter(adapter: RuntimeWorkspaceAdapter): W
     configure(info) {
       return adapter.configure(info)
     },
-    create(info, envOrFrom) {
+    create(info, envOrFrom, from) {
       const env = isWorkspaceInfo(envOrFrom) ? {} : envOrFrom
-      return adapter.create(info, env ?? {})
+      const source = isWorkspaceInfo(envOrFrom) ? envOrFrom : from
+      return adapter.create(info, env ?? {}, source)
     },
     remove(info) {
       return adapter.remove(info)

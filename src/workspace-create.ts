@@ -34,6 +34,7 @@ export type ExistingSandboxPlan =
 export async function createWorkspace(params: {
   info: WorkspaceInfo
   env: Record<string, string | undefined>
+  from?: WorkspaceInfo
   localDirectory: string
   options: E2BWorkspacePluginOptions | undefined
   serverUrl: URL

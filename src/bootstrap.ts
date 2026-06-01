@@ -37,6 +37,7 @@ export async function bootstrapWorkspace(params: {
   await writeRuntimeEnvFile(params.sandbox, params.env, params.logger)
   await signalBootstrapReady(params.sandbox, params.logger)
   await waitForServerReady(params.sandbox, params.config)
+  await waitForSyncReady(params.sandbox, params.config)
 }
 
 async function runPrepareCommands(sandbox: Sandbox, config: NormalizedE2BWorkspaceConfig): Promise<void> {
@@ -145,6 +146,91 @@ async function waitForServerReady(sandbox: Sandbox, config: NormalizedE2BWorkspa
     ? `\nLast ${tail.split("\n").length} lines from ${START_COMMAND_LOG_PATH}:\n${tail}`
     : ""
   throw new Error(`Timed out waiting for OpenCode server at ${readyUrl.toString()}${suffix}`)
+}
+
+/**
+ * The local control plane gates proxied mutation responses on sync fences from
+ * the remote runtime. Treat the sandbox as ready only after both the persistent
+ * event stream and history sync endpoint are reachable.
+ */
+export async function waitForSyncReady(
+  sandbox: Sandbox,
+  config: NormalizedE2BWorkspaceConfig,
+): Promise<void> {
+  const baseUrl = sandboxBaseUrl(sandbox, config)
+  const headers = sandboxTargetHeaders(sandbox, config)
+  const eventUrl = new URL("/global/event", baseUrl)
+  const historyUrl = new URL("/sync/history", baseUrl)
+  const startedAt = Date.now()
+
+  while (Date.now() - startedAt < config.bootstrap.waitForTimeoutMs) {
+    try {
+      await probeEventStream(eventUrl, headers)
+      await probeSyncHistory(historyUrl, headers)
+      return
+    } catch {
+      await sleep(750)
+    }
+  }
+
+  const tail = await readStartCommandLogTail(sandbox).catch(() => undefined)
+  const suffix = tail
+    ? `\nLast ${tail.split("\n").length} lines from ${START_COMMAND_LOG_PATH}:\n${tail}`
+    : ""
+  throw new Error(`Timed out waiting for OpenCode sync endpoints at ${baseUrl.toString()}${suffix}`)
+}
+
+async function probeEventStream(url: URL, headers: HeadersInit | undefined): Promise<void> {
+  let response: Response | undefined
+  try {
+    response = await fetch(url, {
+      headers: {
+        ...headersToObject(headers),
+        accept: "text/event-stream",
+      },
+      signal: AbortSignal.timeout(1_500),
+    })
+    if (!response.ok) throw new Error(`event stream returned HTTP ${response.status}`)
+
+    const contentType = response.headers.get("content-type")
+    if (contentType && !contentType.toLowerCase().includes("text/event-stream")) {
+      throw new Error(`event stream returned ${contentType}`)
+    }
+  } finally {
+    if (response && !response.bodyUsed) {
+      await response.body?.cancel().catch(() => {})
+    }
+  }
+}
+
+async function probeSyncHistory(url: URL, headers: HeadersInit | undefined): Promise<void> {
+  let response: Response | undefined
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        ...headersToObject(headers),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+      signal: AbortSignal.timeout(1_500),
+    })
+    if (!response.ok) throw new Error(`sync history returned HTTP ${response.status}`)
+  } finally {
+    if (response && !response.bodyUsed) {
+      await response.body?.cancel().catch(() => {})
+    }
+  }
+}
+
+function headersToObject(headers: HeadersInit | undefined): Record<string, string> {
+  if (!headers) return {}
+
+  const result: Record<string, string> = {}
+  new Headers(headers).forEach((value, key) => {
+    result[key] = value
+  })
+  return result
 }
 
 async function readStartCommandLogTail(sandbox: Sandbox): Promise<string | undefined> {

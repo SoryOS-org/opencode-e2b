@@ -87,7 +87,7 @@ export type RuntimeWorkspaceAdapter = {
   name: string
   description: string
   configure(info: WorkspaceInfo): WorkspaceInfo | Promise<WorkspaceInfo>
-  create(info: WorkspaceInfo, env: Record<string, string | undefined>): Promise<void>
+  create(info: WorkspaceInfo, env: Record<string, string | undefined>, from?: WorkspaceInfo): Promise<void>
   remove(info: WorkspaceInfo): Promise<void>
   target(info: WorkspaceInfo): Promise<{ type: "remote"; url: string | URL; headers?: HeadersInit }>
 }

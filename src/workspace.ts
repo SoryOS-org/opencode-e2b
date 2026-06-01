@@ -42,11 +42,12 @@ export function createE2BWorkspaceAdapter(deps: WorkspaceAdapterDeps): RuntimeWo
     async configure(info) {
       return configureWorkspace(info, deps.options, deps.serverUrl, deps.logger, deps.client)
     },
-    async create(info, env) {
+    async create(info, env, from) {
       assertE2BApiKeyAvailable()
       await createWorkspace({
         info,
         env,
+        from,
         localDirectory: deps.directory,
         options: deps.options,
         serverUrl: deps.serverUrl,

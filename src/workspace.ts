@@ -16,6 +16,7 @@ import {
 } from "./e2b.js"
 import { runTemplateGC } from "./gc.js"
 import { assertWorkspaceCompatibility, resolveLocalRuntimeVersion } from "./runtime.js"
+import type { SandboxStore } from "./sandbox-store.js"
 import type {
   E2BWorkspacePluginOptions,
   NormalizedE2BWorkspaceConfig,
@@ -31,6 +32,7 @@ type WorkspaceAdapterDeps = {
   options: E2BWorkspacePluginOptions | undefined
   logger: PluginLogger
   gcConfig: NormalizedE2BWorkspaceConfig["templateGc"]
+  sandboxStore?: SandboxStore
 }
 
 export function createE2BWorkspaceAdapter(deps: WorkspaceAdapterDeps): RuntimeWorkspaceAdapter {
@@ -50,12 +52,13 @@ export function createE2BWorkspaceAdapter(deps: WorkspaceAdapterDeps): RuntimeWo
         serverUrl: deps.serverUrl,
         client: deps.client,
         logger: deps.logger,
+        store: deps.sandboxStore,
       })
     },
     async remove(info) {
       assertE2BApiKeyAvailable()
       const config = resolveWorkspaceConfig(info, deps.options)
-      await removeWorkspaceSandbox(info, config, deps.logger)
+      await removeWorkspaceSandbox(info, config, deps.logger, deps.sandboxStore)
       if (deps.gcConfig.enabled) {
         void runTemplateGC(deps.gcConfig, deps.logger).catch(() => {})
       }
@@ -68,6 +71,7 @@ export function createE2BWorkspaceAdapter(deps: WorkspaceAdapterDeps): RuntimeWo
         serverUrl: deps.serverUrl,
         client: deps.client,
         logger: deps.logger,
+        store: deps.sandboxStore,
       })
     },
   }
@@ -108,11 +112,12 @@ async function resolveWorkspaceTarget(params: {
   serverUrl: URL
   client: PluginInput["client"]
   logger: PluginLogger
+  store?: SandboxStore
 }): Promise<{ type: "remote"; url: URL; headers?: HeadersInit }> {
   const localRuntimeVersion = await resolveLocalRuntimeVersion(params.serverUrl, params.logger, params.client)
   const config = resolveWorkspaceConfig(params.info, params.options)
   const compatibility = resolveWorkspaceCompatibility(params.info, config, localRuntimeVersion)
-  const record = await requireWorkspaceSandboxRecord(params.info, config, params.logger)
+  const record = await requireWorkspaceSandboxRecord(params.info, config, params.logger, params.store)
   const baseUrl = sandboxBaseUrl(record.sandbox, config)
   const headers = sandboxTargetHeaders(record.sandbox, config)
 

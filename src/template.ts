@@ -39,6 +39,11 @@ export async function ensureManagedWorkspaceTemplate(
   inputs: ManagedTemplateInputs,
   logger?: PluginLogger,
 ): Promise<string> {
+  const prebuilt = await resolvePrebuiltOpenCodeTemplate(inputs, logger)
+  if (prebuilt) {
+    return prebuilt
+  }
+
   const alias = buildManagedTemplateAlias(inputs)
   const existing = managedTemplatePromises.get(alias)
   if (existing) {
@@ -56,6 +61,37 @@ export async function ensureManagedWorkspaceTemplate(
     }
     throw error
   }
+}
+
+async function resolvePrebuiltOpenCodeTemplate(
+  inputs: ManagedTemplateInputs,
+  logger?: PluginLogger,
+): Promise<string | undefined> {
+  const templateName = buildPrebuiltOpenCodeTemplateName(inputs.runtimeVersion)
+
+  await logger?.info("prebuilt template lookup start", {
+    templateName,
+    runtimeVersion: inputs.runtimeVersion,
+  })
+
+  let exists: boolean
+  try {
+    exists = await Template.exists(templateName)
+  } catch (error) {
+    throw new Error(`Failed to check for prebuilt E2B template ${templateName}: ${errorMessage(error)}`)
+  }
+
+  if (!exists) {
+    await logger?.info("prebuilt template missing; falling back to managed template", {
+      templateName,
+    })
+    return undefined
+  }
+
+  await logger?.info("prebuilt template reuse", {
+    templateName,
+  })
+  return templateName
 }
 
 async function buildManagedWorkspaceTemplate(
@@ -131,6 +167,10 @@ async function templateHasDefaultTag(alias: string): Promise<boolean> {
 
 export function buildOpenCodeInstallCommand(runtimeVersion: string): string {
   return `npm install -g --include=optional opencode-ai@${runtimeVersion}`
+}
+
+export function buildPrebuiltOpenCodeTemplateName(runtimeVersion: string): string {
+  return `e2b/opencode:${runtimeVersion}`
 }
 
 /**

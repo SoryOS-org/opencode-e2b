@@ -91,7 +91,7 @@ function createE2BSDKLogger(logger?: PluginLogger): E2BLogger | undefined {
   if (!logger) return undefined
 
   return {
-    debug: (...args: unknown[]) => writeLog(logger, "info", args),
+    debug: (...args: unknown[]) => writeLog(logger, "debug", args),
     info: (...args: unknown[]) => writeLog(logger, "info", args),
     warn: (...args: unknown[]) => writeLog(logger, "warn", args),
     error: (...args: unknown[]) => writeLog(logger, "error", args),

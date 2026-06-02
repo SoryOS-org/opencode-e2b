@@ -93,6 +93,7 @@ export type RuntimeWorkspaceAdapter = {
 }
 
 export type PluginLogger = {
+  debug(message: string, extra?: Record<string, unknown>): Promise<void>
   info(message: string, extra?: Record<string, unknown>): Promise<void>
   warn(message: string, extra?: Record<string, unknown>): Promise<void>
   error(message: string, extra?: Record<string, unknown>): Promise<void>

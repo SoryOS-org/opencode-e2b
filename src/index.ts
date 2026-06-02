@@ -55,7 +55,7 @@ export const E2BWorkspacePlugin: Plugin = async (
 
 export default E2BWorkspacePlugin
 
-type PluginLogLevel = "info" | "warn" | "error"
+type PluginLogLevel = "debug" | "info" | "warn" | "error"
 
 function createPluginLogger(client: PluginInput["client"]): PluginLogger {
   async function write(level: PluginLogLevel, message: string, extra?: Record<string, unknown>) {
@@ -74,6 +74,9 @@ function createPluginLogger(client: PluginInput["client"]): PluginLogger {
   }
 
   return {
+    debug(message, extra) {
+      return write("debug", message, extra)
+    },
     info(message, extra) {
       return write("info", message, extra)
     },

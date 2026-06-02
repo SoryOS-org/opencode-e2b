@@ -204,10 +204,6 @@ function readPersistedExtra(info: WorkspaceInfo): PersistedWorkspaceExtra | unde
 function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">): string[] {
   const flags = new Set<string>(["sync:local-snapshot-upload", "repo:git-init", "install:node-base"])
 
-  if (config.bootstrap.prepareCommands.some((command) => command.trim())) {
-    flags.add("bootstrap:prepare-commands")
-  }
-
   return [...flags]
 }
 

@@ -169,6 +169,22 @@ export async function assertWorkspaceCompatibility(params: {
     )
   }
 
+  if (params.persistedCompatibility.runtimeVersion !== params.localRuntimeVersion) {
+    throw new Error(
+      `Workspace ${params.workspaceID} was configured for OpenCode runtime ${params.persistedCompatibility.runtimeVersion}, but local runtime is ${params.localRuntimeVersion}`,
+    )
+  }
+
+  if (params.sandboxCompatibility.runtimeVersion !== params.persistedCompatibility.runtimeVersion) {
+    throw new Error(
+      `Workspace ${params.workspaceID} sandbox runtime ${params.sandboxCompatibility.runtimeVersion ?? "unknown"} does not match configured runtime ${params.persistedCompatibility.runtimeVersion}`,
+    )
+  }
+
+  if (!sameStringSet(params.sandboxCompatibility.flags, params.persistedCompatibility.flags)) {
+    throw new Error(`Workspace ${params.workspaceID} sandbox flags do not match configured flags`)
+  }
+
   const cached = compatibilityCache.get(params.sandbox.sandboxId)
   if (cached && cached.localRuntimeVersion === params.localRuntimeVersion) {
     return
@@ -184,6 +200,13 @@ export async function assertWorkspaceCompatibility(params: {
   compatibilityCache.set(params.sandbox.sandboxId, {
     localRuntimeVersion: params.localRuntimeVersion,
   })
+}
+
+function sameStringSet(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false
+  const sortedLeft = [...left].sort()
+  const sortedRight = [...right].sort()
+  return sortedLeft.every((entry, index) => entry === sortedRight[index])
 }
 
 function parseSemver(version: string): { major: number; minor: number; patch: number } {

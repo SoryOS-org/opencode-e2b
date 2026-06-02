@@ -94,3 +94,13 @@ test("resolveWorkspaceConfig keeps persisted workspace identity stable", () => {
     region: "us",
   })
 })
+
+test("normalizeOptions does not flag prepare commands as a compatibility feature", () => {
+  const config = normalizeOptions({
+    bootstrap: {
+      prepareCommands: ["npm install"],
+    },
+  })
+
+  assert.deepEqual(config.flags, ["sync:local-snapshot-upload", "repo:git-init", "install:node-base"])
+})

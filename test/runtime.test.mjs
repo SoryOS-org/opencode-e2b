@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "bun:test"
 
 import {
+  assertWorkspaceCompatibility,
   clearLocalRuntimeVersionCacheForTest,
   meetsRuntimeFloor,
   resolveLocalRuntimeVersion,
@@ -56,3 +57,51 @@ test("resolveLocalRuntimeVersion uses the injected OpenCode client transport", a
   assert.equal(requested.url, "/global/health")
   assert.ok(requested.signal instanceof AbortSignal)
 })
+
+test("assertWorkspaceCompatibility rejects mismatched runtime metadata", async () => {
+  await assert.rejects(
+    assertWorkspaceCompatibility({
+      workspaceID: "workspace-123",
+      localRuntimeVersion: "1.14.40",
+      persistedCompatibility: compatibility("1.14.39"),
+      sandboxCompatibility: compatibility("1.14.39"),
+      sandbox: { sandboxId: "sandbox-runtime-local" },
+      baseUrl: new URL("https://sandbox.example.com"),
+    }),
+    /local runtime is 1\.14\.40/,
+  )
+
+  await assert.rejects(
+    assertWorkspaceCompatibility({
+      workspaceID: "workspace-123",
+      localRuntimeVersion: "1.14.39",
+      persistedCompatibility: compatibility("1.14.39"),
+      sandboxCompatibility: compatibility("1.14.38"),
+      sandbox: { sandboxId: "sandbox-runtime-remote" },
+      baseUrl: new URL("https://sandbox.example.com"),
+    }),
+    /sandbox runtime 1\.14\.38/,
+  )
+})
+
+test("assertWorkspaceCompatibility rejects mismatched flags", async () => {
+  await assert.rejects(
+    assertWorkspaceCompatibility({
+      workspaceID: "workspace-123",
+      localRuntimeVersion: "1.14.39",
+      persistedCompatibility: compatibility("1.14.39", ["sync:local-snapshot-upload"]),
+      sandboxCompatibility: compatibility("1.14.39", ["repo:git-init"]),
+      sandbox: { sandboxId: "sandbox-flags" },
+      baseUrl: new URL("https://sandbox.example.com"),
+    }),
+    /sandbox flags do not match/,
+  )
+})
+
+function compatibility(runtimeVersion, flags = []) {
+  return {
+    workspaceApiVersion: "1",
+    runtimeVersion,
+    flags,
+  }
+}

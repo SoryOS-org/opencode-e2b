@@ -30,8 +30,6 @@ export const BOOTSTRAP_READY_MARKER = "/tmp/.opencode-e2b-bootstrap-ready"
 const SYSTEMD_SERVICE_NAME = "opencode-e2b.service"
 const SYSTEMD_SERVICE_PATH = `/etc/systemd/system/${SYSTEMD_SERVICE_NAME}`
 const SYSTEMD_START_SCRIPT_PATH = "/usr/local/bin/opencode-e2b-start"
-const MANAGED_BASE_TEMPLATE_IMPLEMENTATION_VERSION = "base-runtime-v1"
-const MANAGED_WORKSPACE_TEMPLATE_IMPLEMENTATION_VERSION = "workspace-systemd-marker-v2"
 
 /**
  * E2B's `Sandbox.create({ envs })` only affects later commands, not the
@@ -506,14 +504,7 @@ export function buildSystemdStartScript(projectPath: string, serverPort: number)
 export function buildManagedBaseTemplateAlias(inputs: ManagedBaseTemplateInputs): string {
   const readableNodeVariant = normalizeAliasSegment(inputs.nodeVariant).slice(0, 18) || "node"
   const hash = createHash("sha256")
-    .update(
-      [
-        inputs.nodeVariant,
-        inputs.runtimeVersion,
-        inputs.pluginPackageVersion,
-        MANAGED_BASE_TEMPLATE_IMPLEMENTATION_VERSION,
-      ].join("\0"),
-    )
+    .update([inputs.nodeVariant, inputs.runtimeVersion, inputs.pluginPackageVersion].join("\0"))
     .digest("hex")
     .slice(0, 12)
 
@@ -531,7 +522,6 @@ export function buildManagedWorkspaceTemplateAlias(inputs: ManagedWorkspaceTempl
         inputs.projectPath,
         String(inputs.serverPort),
         inputs.pluginPackageVersion,
-        MANAGED_WORKSPACE_TEMPLATE_IMPLEMENTATION_VERSION,
       ].join("\0"),
     )
     .digest("hex")

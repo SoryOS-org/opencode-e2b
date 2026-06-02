@@ -1,8 +1,14 @@
 import assert from "node:assert/strict"
 import { test } from "bun:test"
 
-import { renderRuntimeEnvFile, waitForSyncReady } from "../dist/bootstrap.js"
+import {
+  bootstrapWorkspace,
+  buildBootstrapCommand,
+  renderRuntimeEnvFile,
+  waitForSyncReady,
+} from "../dist/bootstrap.js"
 import { normalizeOptions } from "../dist/config.js"
+import { BOOTSTRAP_READY_MARKER } from "../dist/template.js"
 
 test("renderRuntimeEnvFile exports defined values and skips undefined entries", () => {
   assert.equal(
@@ -25,6 +31,94 @@ test("renderRuntimeEnvFile shell-quotes auth payloads", () => {
       OPENCODE_AUTH_CONTENT: `{"token":"can't"}`,
     }),
     /export OPENCODE_AUTH_CONTENT='\{"token":"can'\\''t"\}'/,
+  )
+})
+
+test("buildBootstrapCommand combines prepare commands and git initialization", () => {
+  const command = buildBootstrapCommand(
+    { id: "workspace-123", projectID: "project-456", branch: "feature/test" },
+    normalizeOptions({
+      projectPath: "/home/user/project",
+      bootstrap: {
+        prepareCommands: ["npm install", "  ", "npm run build"],
+      },
+    }),
+  )
+
+  assert.equal(
+    command,
+    [
+      "mkdir -p '/home/user/project'",
+      "cd '/home/user/project'",
+      "(npm install)",
+      "(npm run build)",
+      "if [ ! -d .git ]; then git init -b 'feature/test'; fi",
+    ].join(" && "),
+  )
+})
+
+test("bootstrapWorkspace releases the systemd opencode service with a marker", async () => {
+  const originalFetch = globalThis.fetch
+  const commandRuns = []
+  const writes = []
+
+  globalThis.fetch = async (url, init = {}) => {
+    const pathname = new URL(url.toString()).pathname
+    if (pathname === "/global/health") {
+      return Response.json({ healthy: true, version: "1.2.3" })
+    }
+    if (pathname === "/global/event") {
+      return new Response(new ReadableStream(), {
+        headers: { "content-type": "text/event-stream" },
+      })
+    }
+    if (pathname === "/sync/history") {
+      assert.equal(init.method, "POST")
+      return Response.json([])
+    }
+
+    return new Response("unexpected", { status: 500 })
+  }
+
+  const sandbox = {
+    getHost(port) {
+      return `sandbox-host-${port}.example.com`
+    },
+    files: {
+      async write(path, content) {
+        writes.push([path, content])
+      },
+      async exists() {
+        return false
+      },
+    },
+    commands: {
+      async run(command, options = {}) {
+        commandRuns.push([command, options])
+        return { exitCode: 0, stdout: "", stderr: "" }
+      },
+    },
+  }
+
+  try {
+    await bootstrapWorkspace({
+      sandbox,
+      info: { id: "workspace-123", projectID: "project-456", branch: "main" },
+      config: normalizeOptions({ projectPath: "/home/user/project", serverPort: 4096 }),
+      env: { OPENCODE_WORKSPACE_ID: "workspace-123" },
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+
+  assert.equal(commandRuns.length, 1)
+  assert.match(commandRuns[0][0], /mkdir -p '\/home\/user\/project'/)
+  assert.match(commandRuns[0][0], /git init -b 'main'/)
+  assert.equal(commandRuns[0][1].cwd, undefined)
+  assert.ok(commandRuns.every(([command]) => !command.includes("opencode serve")))
+  assert.deepEqual(
+    writes.map(([path]) => path),
+    ["/home/user/project/.git/opencode", "/tmp/.opencode-e2b.env", BOOTSTRAP_READY_MARKER],
   )
 })
 

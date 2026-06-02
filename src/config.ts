@@ -99,7 +99,7 @@ export async function warnDeprecatedBootstrapOptions(
 
   if (startCommand) {
     await logger?.warn(
-      "bootstrap.startCommand is deprecated and ignored; the managed template runs a marker-gated start command.",
+      "bootstrap.startCommand is deprecated and ignored; the managed template runs a marker-gated systemd service.",
       {
         startCommand,
       },

@@ -4,11 +4,17 @@ import { test } from "bun:test"
 import { Template } from "e2b"
 
 import {
+  BOOTSTRAP_READY_MARKER,
   buildManagedTemplateAlias,
   buildOpenCodeInstallCommand,
   buildPrebuiltOpenCodeTemplateName,
+  buildSystemdServiceInstallCommand,
+  buildSystemdStartCommand,
+  buildSystemdStartScript,
+  buildSystemdUnitContent,
   ensureManagedWorkspaceTemplate,
   MANAGED_TEMPLATE_PREFIX,
+  RUNTIME_ENV_FILE,
 } from "../dist/template.js"
 
 const baseInputs = {
@@ -48,6 +54,46 @@ test("buildOpenCodeInstallCommand skips optional binary dependencies", () => {
 
 test("buildPrebuiltOpenCodeTemplateName targets the runtime-specific published template", () => {
   assert.equal(buildPrebuiltOpenCodeTemplateName("1.14.39"), "e2b/opencode:1.14.39")
+})
+
+test("buildSystemdUnitContent points systemd at the opencode start script", () => {
+  const unit = buildSystemdUnitContent()
+
+  assert.match(unit, /\[Service\]/)
+  assert.match(unit, /Restart=on-failure/)
+  assert.match(unit, /ExecStart=\/usr\/local\/bin\/opencode-e2b-start/)
+})
+
+test("buildSystemdStartScript gates opencode serve on the bootstrap marker", () => {
+  const script = buildSystemdStartScript("/home/user/project", 4096)
+
+  assert.match(script, /^#!\/bin\/sh/)
+  assert.match(script, /exec >>\/tmp\/opencode-serve\.log 2>&1/)
+  assert.match(script, /waiting for \/tmp\/\.opencode-e2b-bootstrap-ready/)
+  assert.match(script, new RegExp(escapeRegExp(BOOTSTRAP_READY_MARKER)))
+  assert.match(script, new RegExp(escapeRegExp(RUNTIME_ENV_FILE)))
+  assert.match(script, /cd '\/home\/user\/project'/)
+  assert.match(script, /exec \/usr\/local\/bin\/opencode serve --hostname 0\.0\.0\.0 --port 4096/)
+})
+
+test("buildSystemdServiceInstallCommand writes the opencode service unit and start script", () => {
+  const command = buildSystemdServiceInstallCommand("/home/user/project", 4096)
+
+  assert.match(command, /cat >\/usr\/local\/bin\/opencode-e2b-start <<'EOF'/)
+  assert.match(command, /chmod \+x \/usr\/local\/bin\/opencode-e2b-start/)
+  assert.match(command, /cat >\/etc\/systemd\/system\/opencode-e2b\.service <<'EOF'/)
+  assert.match(command, new RegExp(escapeRegExp(BOOTSTRAP_READY_MARKER)))
+  assert.match(command, /Description=OpenCode E2B workspace server/)
+  assert.match(command, /EOF$/)
+})
+
+test("buildSystemdStartCommand starts the service and streams opencode logs", () => {
+  const command = buildSystemdStartCommand()
+
+  assert.match(command, /sudo install -m 666 \/dev\/null \/tmp\/opencode-serve\.log/)
+  assert.match(command, /sudo systemctl daemon-reload/)
+  assert.match(command, /sudo systemctl restart opencode-e2b\.service/)
+  assert.match(command, /tail -n \+1 -F \/tmp\/opencode-serve\.log/)
 })
 
 test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
@@ -206,4 +252,8 @@ function restoreTestEnv(originalApiKey) {
   } else {
     process.env.E2B_API_KEY = originalApiKey
   }
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }

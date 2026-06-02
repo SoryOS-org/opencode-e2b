@@ -4,7 +4,6 @@ import { posix } from "node:path"
 
 import { Sandbox } from "e2b"
 
-import { shellSingleQuote } from "./shared.js"
 import type { E2BUploadOptions } from "./types.js"
 
 type SnapshotPath = {
@@ -30,7 +29,6 @@ export async function uploadLocalSnapshot(params: {
   upload: Required<E2BUploadOptions>
 }): Promise<void> {
   const paths = await collectSnapshotPaths(params.localRoot, params.upload)
-  await ensureRemoteDirectories(params.sandbox, params.remoteRoot, paths)
 
   for (const batch of chunk(paths, params.upload.batchSize)) {
     const entries = await Promise.all(
@@ -94,25 +92,6 @@ async function walkDirectory(
   }
 
   return files
-}
-
-async function ensureRemoteDirectories(
-  sandbox: Sandbox,
-  remoteRoot: string,
-  paths: SnapshotPath[],
-): Promise<void> {
-  const directories = new Set<string>([remoteRoot])
-
-  for (const entry of paths) {
-    const relativeDirectory = posix.dirname(entry.relativePath)
-    if (relativeDirectory !== ".") {
-      directories.add(toRemotePath(remoteRoot, relativeDirectory))
-    }
-  }
-
-  for (const batch of chunk([...directories].sort(), 50)) {
-    await sandbox.commands.run(`mkdir -p ${batch.map(shellSingleQuote).join(" ")}`)
-  }
 }
 
 function shouldIgnore(relativePath: string, upload: Required<E2BUploadOptions>): boolean {

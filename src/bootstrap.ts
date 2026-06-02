@@ -31,35 +31,35 @@ export async function bootstrapWorkspace(params: {
   env: Record<string, string | undefined>
   logger?: PluginLogger
 }): Promise<void> {
-  await runPrepareCommands(params.sandbox, params.config)
-  await ensureGitRepository(params.sandbox, params.info, params.config)
+  await runBootstrapCommands(params.sandbox, params.info, params.config)
   await writeProjectMarker(params.sandbox, params.info, params.config)
   await writeRuntimeEnvFile(params.sandbox, params.env, params.logger)
   await signalBootstrapReady(params.sandbox, params.logger)
-  await waitForServerReady(params.sandbox, params.config)
-  await waitForSyncReady(params.sandbox, params.config)
+  await waitForServerReady(params.sandbox, params.config, params.logger)
+  await waitForSyncReady(params.sandbox, params.config, params.logger)
 }
 
-async function runPrepareCommands(sandbox: Sandbox, config: NormalizedE2BWorkspaceConfig): Promise<void> {
-  for (const command of config.bootstrap.prepareCommands) {
-    if (!command.trim()) continue
-    await runCheckedCommand(sandbox, command, config.projectPath)
-  }
-}
-
-async function ensureGitRepository(
+async function runBootstrapCommands(
   sandbox: Sandbox,
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
 ): Promise<void> {
+  await runCheckedCommand(sandbox, buildBootstrapCommand(info, config))
+}
+
+export function buildBootstrapCommand(info: WorkspaceInfo, config: NormalizedE2BWorkspaceConfig): string {
   const branch = info.branch ?? "main"
-  const command = [
+  const commands = [
     `mkdir -p ${shellSingleQuote(config.projectPath)}`,
     `cd ${shellSingleQuote(config.projectPath)}`,
+    ...config.bootstrap.prepareCommands
+      .map((command) => command.trim())
+      .filter(Boolean)
+      .map((command) => `(${command})`),
     `if [ ! -d .git ]; then git init -b ${shellSingleQuote(branch)}; fi`,
-  ].join(" && ")
+  ]
 
-  await runCheckedCommand(sandbox, command)
+  return commands.join(" && ")
 }
 
 async function writeProjectMarker(
@@ -113,13 +113,19 @@ async function signalBootstrapReady(sandbox: Sandbox, logger?: PluginLogger): Pr
  * The response body is cancelled each time so a custom readiness path cannot
  * leave a streaming response open across poll iterations.
  */
-async function waitForServerReady(sandbox: Sandbox, config: NormalizedE2BWorkspaceConfig): Promise<void> {
+async function waitForServerReady(
+  sandbox: Sandbox,
+  config: NormalizedE2BWorkspaceConfig,
+  logger?: PluginLogger,
+): Promise<void> {
   const baseUrl = sandboxBaseUrl(sandbox, config)
   const readyUrl = new URL(config.bootstrap.waitForPath, baseUrl)
   const headers = sandboxTargetHeaders(sandbox, config)
   const startedAt = Date.now()
+  let attempts = 0
 
   while (Date.now() - startedAt < config.bootstrap.waitForTimeoutMs) {
+    attempts += 1
     let response: Response | undefined
     let ready = false
     try {
@@ -136,7 +142,14 @@ async function waitForServerReady(sandbox: Sandbox, config: NormalizedE2BWorkspa
       }
     }
 
-    if (ready) return
+    if (ready) {
+      await logger?.info("remote opencode health ready", {
+        url: readyUrl.toString(),
+        attempts,
+        durationMs: Date.now() - startedAt,
+      })
+      return
+    }
 
     await sleep(750)
   }
@@ -156,17 +169,26 @@ async function waitForServerReady(sandbox: Sandbox, config: NormalizedE2BWorkspa
 export async function waitForSyncReady(
   sandbox: Sandbox,
   config: NormalizedE2BWorkspaceConfig,
+  logger?: PluginLogger,
 ): Promise<void> {
   const baseUrl = sandboxBaseUrl(sandbox, config)
   const headers = sandboxTargetHeaders(sandbox, config)
   const eventUrl = new URL("/global/event", baseUrl)
   const historyUrl = new URL("/sync/history", baseUrl)
   const startedAt = Date.now()
+  let attempts = 0
 
   while (Date.now() - startedAt < config.bootstrap.waitForTimeoutMs) {
+    attempts += 1
     try {
       await probeEventStream(eventUrl, headers)
       await probeSyncHistory(historyUrl, headers)
+      await logger?.info("remote opencode sync ready", {
+        eventUrl: eventUrl.toString(),
+        historyUrl: historyUrl.toString(),
+        attempts,
+        durationMs: Date.now() - startedAt,
+      })
       return
     } catch {
       await sleep(750)

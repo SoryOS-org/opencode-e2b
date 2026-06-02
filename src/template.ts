@@ -28,6 +28,10 @@ export const MANAGED_TEMPLATE_PREFIX = "opencode-e2b-"
 export const BOOTSTRAP_READY_MARKER = "/tmp/.opencode-e2b-bootstrap-ready"
 
 const START_COMMAND_LOG_PATH = "/tmp/opencode-serve.log"
+const SYSTEMD_SERVICE_NAME = "opencode-e2b.service"
+const SYSTEMD_SERVICE_PATH = `/etc/systemd/system/${SYSTEMD_SERVICE_NAME}`
+const SYSTEMD_START_SCRIPT_PATH = "/usr/local/bin/opencode-e2b-start"
+const MANAGED_TEMPLATE_IMPLEMENTATION_VERSION = "systemd-marker-v1"
 
 /**
  * E2B's `Sandbox.create({ envs })` only affects later commands, not the
@@ -121,10 +125,11 @@ async function buildManagedWorkspaceTemplate(
   const template = Template()
     .fromNodeImage(inputs.nodeVariant)
     .runCmd(buildOpenCodeInstallCommand(inputs.runtimeVersion), { user: "root" })
+    .runCmd(buildSystemdServiceInstallCommand(inputs.projectPath, inputs.serverPort), { user: "root" })
     .setStartCmd(
-      buildBakedStartCommand(inputs.projectPath, inputs.serverPort),
+      buildSystemdStartCommand(),
       // E2B polls the ready command during `Sandbox.create()`. Because our
-      // start command blocks on a marker that only the plugin writes *after*
+      // systemd service blocks on a marker that only the plugin writes *after*
       // create returns, any real readiness probe (waitForPort, waitForFile)
       // would deadlock sandbox creation. `true` always exits 0, so E2B
       // considers the sandbox ready as soon as init completes; the plugin
@@ -294,19 +299,64 @@ async function buildManagedTemplateOnce(
   await Template.build(template, alias, createE2BConnectionOptions(logger))
 }
 
+export function buildSystemdServiceInstallCommand(projectPath: string, serverPort: number): string {
+  return [
+    `cat >${SYSTEMD_START_SCRIPT_PATH} <<'EOF'`,
+    buildSystemdStartScript(projectPath, serverPort),
+    "EOF",
+    `chmod +x ${SYSTEMD_START_SCRIPT_PATH}`,
+    `cat >${SYSTEMD_SERVICE_PATH} <<'EOF'`,
+    buildSystemdUnitContent(),
+    "EOF",
+  ].join("\n")
+}
+
+export function buildSystemdStartCommand(): string {
+  return [
+    `sudo install -m 666 /dev/null ${START_COMMAND_LOG_PATH}`,
+    "sudo systemctl daemon-reload",
+    `sudo systemctl restart ${SYSTEMD_SERVICE_NAME}`,
+    `tail -n +1 -F ${START_COMMAND_LOG_PATH}`,
+  ].join(" && ")
+}
+
+export function buildSystemdUnitContent(): string {
+  return [
+    "[Unit]",
+    "Description=OpenCode E2B workspace server",
+    "After=network.target",
+    "",
+    "[Service]",
+    "Type=simple",
+    "Restart=on-failure",
+    "RestartSec=1",
+    "KillSignal=SIGINT",
+    "TimeoutStopSec=10",
+    `ExecStart=${SYSTEMD_START_SCRIPT_PATH}`,
+    "",
+    "[Install]",
+    "WantedBy=multi-user.target",
+    "",
+  ].join("\n")
+}
+
 /**
- * The template starts before project upload finishes, so it waits on a marker
- * file. The cap prevents a stuck sandbox if provisioning dies mid-flight.
+ * The systemd service starts before project upload finishes, so it waits on a
+ * marker file. The cap prevents a stuck sandbox if provisioning dies mid-flight.
  */
-function buildBakedStartCommand(projectPath: string, serverPort: number): string {
+export function buildSystemdStartScript(projectPath: string, serverPort: number): string {
   const quotedProjectPath = shellSingleQuote(projectPath)
   return [
-    `exec >${START_COMMAND_LOG_PATH} 2>&1`,
+    "#!/bin/sh",
+    `exec >>${START_COMMAND_LOG_PATH} 2>&1`,
+    `echo "waiting for ${BOOTSTRAP_READY_MARKER}"`,
     `for _ in $(seq 1 2400); do [ -f ${BOOTSTRAP_READY_MARKER} ] && break; sleep 0.25; done`,
+    `if [ ! -f ${BOOTSTRAP_READY_MARKER} ]; then echo "timed out waiting for ${BOOTSTRAP_READY_MARKER}"; exit 1; fi`,
     `if [ -f ${RUNTIME_ENV_FILE} ]; then set -a; . ${RUNTIME_ENV_FILE}; set +a; fi`,
-    `cd ${quotedProjectPath} 2>/dev/null || true`,
+    `cd ${quotedProjectPath}`,
     `exec /usr/local/bin/opencode serve --hostname 0.0.0.0 --port ${serverPort}`,
-  ].join(" && ")
+    "",
+  ].join("\n")
 }
 
 export function buildManagedTemplateAlias(inputs: ManagedTemplateInputs): string {
@@ -319,6 +369,7 @@ export function buildManagedTemplateAlias(inputs: ManagedTemplateInputs): string
         inputs.projectPath,
         String(inputs.serverPort),
         inputs.pluginPackageVersion,
+        MANAGED_TEMPLATE_IMPLEMENTATION_VERSION,
       ].join("\0"),
     )
     .digest("hex")

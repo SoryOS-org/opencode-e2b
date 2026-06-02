@@ -32,9 +32,7 @@ test("uploadLocalSnapshot uploads project files and skips default ignores", asyn
     ])
     const readme = sandbox.writes.find((entry) => entry.path.endsWith("/README.md"))
     assert.equal(bufferText(readme.data), "readme")
-    assert.match(sandbox.commandsRun[0], /mkdir -p/)
-    assert.match(sandbox.commandsRun[0], /'\/home\/user\/project'/)
-    assert.match(sandbox.commandsRun[0], /'\/home\/user\/project\/src'/)
+    assert.deepEqual(sandbox.commandsRun, [])
   } finally {
     await rm(localRoot, { recursive: true, force: true })
   }

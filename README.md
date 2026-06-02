@@ -82,7 +82,7 @@ Common options:
 - `upload.followSymlinks`: follow symlinks during upload. Default: `false`.
 - `templateGc`: best-effort cleanup for old managed templates.
 
-`bootstrap.prepareCommands` still runs after upload and before the remote OpenCode server starts. `bootstrap.installCommand` and `bootstrap.startCommand` are accepted for older configs but ignored; the selected base template provides the pinned OpenCode runtime and the local workspace wrapper owns startup through a marker-gated systemd service.
+`bootstrap.prepareCommands` still runs after upload and before the remote OpenCode server starts. `bootstrap.installCommand` and `bootstrap.startCommand` are accepted for older configs but ignored; the selected base template provides the pinned OpenCode runtime and the local workspace wrapper owns startup through a marker-gated systemd service. Service logs are written to journald and streamed with `journalctl -f` from the template start command.
 
 ## Template Cleanup
 

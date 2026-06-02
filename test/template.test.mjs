@@ -87,6 +87,8 @@ test("buildSystemdUnitContent points systemd at the opencode start script", () =
 
   assert.match(unit, /\[Service\]/)
   assert.match(unit, /Restart=on-failure/)
+  assert.match(unit, /StandardOutput=journal/)
+  assert.match(unit, /StandardError=journal/)
   assert.match(unit, /ExecStart=\/usr\/local\/bin\/opencode-e2b-start/)
 })
 
@@ -94,7 +96,6 @@ test("buildSystemdStartScript gates opencode serve on the bootstrap marker", () 
   const script = buildSystemdStartScript("/home/user/project", 4096)
 
   assert.match(script, /^#!\/bin\/sh/)
-  assert.match(script, /exec >>\/tmp\/opencode-serve\.log 2>&1/)
   assert.match(script, /waiting for \/tmp\/\.opencode-e2b-bootstrap-ready/)
   assert.match(script, new RegExp(escapeRegExp(BOOTSTRAP_READY_MARKER)))
   assert.match(script, new RegExp(escapeRegExp(RUNTIME_ENV_FILE)))
@@ -116,10 +117,9 @@ test("buildSystemdServiceInstallCommand writes the opencode service unit and sta
 test("buildSystemdStartCommand starts the service and streams opencode logs", () => {
   const command = buildSystemdStartCommand()
 
-  assert.match(command, /sudo install -m 666 \/dev\/null \/tmp\/opencode-serve\.log/)
   assert.match(command, /sudo systemctl daemon-reload/)
   assert.match(command, /sudo systemctl restart opencode-e2b\.service/)
-  assert.match(command, /tail -n \+1 -F \/tmp\/opencode-serve\.log/)
+  assert.match(command, /sudo journalctl -fu opencode-e2b\.service -o cat/)
 })
 
 test("resolveOpenCodeBaseTemplate uses published opencode templates when present", async () => {

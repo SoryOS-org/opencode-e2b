@@ -27,12 +27,11 @@ export const MANAGED_TEMPLATE_PREFIX = "opencode-e2b-"
  */
 export const BOOTSTRAP_READY_MARKER = "/tmp/.opencode-e2b-bootstrap-ready"
 
-const START_COMMAND_LOG_PATH = "/tmp/opencode-serve.log"
 const SYSTEMD_SERVICE_NAME = "opencode-e2b.service"
 const SYSTEMD_SERVICE_PATH = `/etc/systemd/system/${SYSTEMD_SERVICE_NAME}`
 const SYSTEMD_START_SCRIPT_PATH = "/usr/local/bin/opencode-e2b-start"
 const MANAGED_BASE_TEMPLATE_IMPLEMENTATION_VERSION = "base-runtime-v1"
-const MANAGED_WORKSPACE_TEMPLATE_IMPLEMENTATION_VERSION = "workspace-systemd-wrapper-v1"
+const MANAGED_WORKSPACE_TEMPLATE_IMPLEMENTATION_VERSION = "workspace-systemd-marker-v2"
 
 /**
  * E2B's `Sandbox.create({ envs })` only affects later commands, not the
@@ -458,10 +457,9 @@ export function buildSystemdServiceInstallCommand(projectPath: string, serverPor
 
 export function buildSystemdStartCommand(): string {
   return [
-    `sudo install -m 666 /dev/null ${START_COMMAND_LOG_PATH}`,
     "sudo systemctl daemon-reload",
     `sudo systemctl restart ${SYSTEMD_SERVICE_NAME}`,
-    `tail -n +1 -F ${START_COMMAND_LOG_PATH}`,
+    `sudo journalctl -fu ${SYSTEMD_SERVICE_NAME} -o cat`,
   ].join(" && ")
 }
 
@@ -477,6 +475,8 @@ export function buildSystemdUnitContent(): string {
     "RestartSec=1",
     "KillSignal=SIGINT",
     "TimeoutStopSec=10",
+    "StandardOutput=journal",
+    "StandardError=journal",
     `ExecStart=${SYSTEMD_START_SCRIPT_PATH}`,
     "",
     "[Install]",
@@ -493,7 +493,6 @@ export function buildSystemdStartScript(projectPath: string, serverPort: number)
   const quotedProjectPath = shellSingleQuote(projectPath)
   return [
     "#!/bin/sh",
-    `exec >>${START_COMMAND_LOG_PATH} 2>&1`,
     `echo "waiting for ${BOOTSTRAP_READY_MARKER}"`,
     `for _ in $(seq 1 2400); do [ -f ${BOOTSTRAP_READY_MARKER} ] && break; sleep 0.25; done`,
     `if [ ! -f ${BOOTSTRAP_READY_MARKER} ]; then echo "timed out waiting for ${BOOTSTRAP_READY_MARKER}"; exit 1; fi`,

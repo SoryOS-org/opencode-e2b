@@ -8,7 +8,7 @@ import { sandboxBaseUrl, sandboxTargetHeaders } from "./e2b.js"
 import { shellSingleQuote } from "./shared.js"
 import { BOOTSTRAP_READY_MARKER, RUNTIME_ENV_FILE } from "./template.js"
 
-const START_COMMAND_LOG_PATH = "/tmp/opencode-serve.log"
+const SYSTEMD_SERVICE_NAME = "opencode-e2b.service"
 
 /**
  * Prepare the uploaded project in the sandbox and release the baked
@@ -150,9 +150,9 @@ async function waitForServerReady(
     await sleep(750)
   }
 
-  const tail = await readStartCommandLogTail(sandbox).catch(() => undefined)
+  const tail = await readServiceJournalTail(sandbox).catch(() => undefined)
   const suffix = tail
-    ? `\nLast ${tail.split("\n").length} lines from ${START_COMMAND_LOG_PATH}:\n${tail}`
+    ? `\nLast ${tail.split("\n").length} journal lines from ${SYSTEMD_SERVICE_NAME}:\n${tail}`
     : ""
   throw new Error(`Timed out waiting for OpenCode server at ${readyUrl.toString()}${suffix}`)
 }
@@ -191,9 +191,9 @@ export async function waitForSyncReady(
     }
   }
 
-  const tail = await readStartCommandLogTail(sandbox).catch(() => undefined)
+  const tail = await readServiceJournalTail(sandbox).catch(() => undefined)
   const suffix = tail
-    ? `\nLast ${tail.split("\n").length} lines from ${START_COMMAND_LOG_PATH}:\n${tail}`
+    ? `\nLast ${tail.split("\n").length} journal lines from ${SYSTEMD_SERVICE_NAME}:\n${tail}`
     : ""
   throw new Error(`Timed out waiting for OpenCode sync endpoints at ${baseUrl.toString()}${suffix}`)
 }
@@ -251,15 +251,14 @@ function headersToObject(headers: HeadersInit | undefined): Record<string, strin
   return result
 }
 
-async function readStartCommandLogTail(sandbox: Sandbox): Promise<string | undefined> {
-  const exists = await sandbox.files.exists(START_COMMAND_LOG_PATH)
-  if (!exists) return undefined
-
-  const content = await sandbox.files.read(START_COMMAND_LOG_PATH)
-  const lines = content.split("\n")
-  const maxLines = 40
-  const slice = lines.length > maxLines ? lines.slice(lines.length - maxLines) : lines
-  return slice.join("\n").trim()
+async function readServiceJournalTail(sandbox: Sandbox): Promise<string | undefined> {
+  const command = `sudo journalctl -u ${SYSTEMD_SERVICE_NAME} -n 80 --no-pager -o cat`
+  const result = await sandbox.commands.run(command)
+  const stdout = result.stdout.trim()
+  const stderr = result.stderr.trim()
+  if (result.exitCode === 0 && stdout) return stdout
+  if (stdout || stderr) return [stdout, stderr].filter(Boolean).join("\n")
+  return undefined
 }
 
 async function runCheckedCommand(sandbox: Sandbox, command: string, cwd?: string): Promise<void> {

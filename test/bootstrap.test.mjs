@@ -34,6 +34,22 @@ test("renderRuntimeEnvFile shell-quotes auth payloads", () => {
   )
 })
 
+test("renderRuntimeEnvFile skips names that are not shell identifiers", () => {
+  assert.equal(
+    renderRuntimeEnvFile({
+      GOOD_NAME: "kept",
+      "BAD-NAME": "skipped",
+      "$(touch /tmp/pwned)": "skipped",
+    }),
+    [
+      "# Written by opencode-e2b bootstrap; sourced by the managed template systemd service.",
+      "# Do not edit: regenerated on every workspace create.",
+      "export GOOD_NAME='kept'",
+      "",
+    ].join("\n"),
+  )
+})
+
 test("buildBootstrapCommand combines prepare commands and git initialization", () => {
   const command = buildBootstrapCommand(
     { id: "workspace-123", projectID: "project-456", branch: "feature/test" },

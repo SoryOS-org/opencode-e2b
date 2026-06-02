@@ -9,6 +9,7 @@ import { shellSingleQuote } from "./shared.js"
 import { BOOTSTRAP_READY_MARKER, RUNTIME_ENV_FILE } from "./template.js"
 
 const SYSTEMD_SERVICE_NAME = "opencode-e2b.service"
+const SHELL_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/
 
 /**
  * Prepare the uploaded project in the sandbox and release the baked
@@ -93,7 +94,9 @@ export function renderRuntimeEnvFile(env: Record<string, string | undefined>): s
 
 function filterRuntimeEnv(env: Record<string, string | undefined>): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+    Object.entries(env).filter(
+      (entry): entry is [string, string] => SHELL_IDENTIFIER.test(entry[0]) && typeof entry[1] === "string",
+    ),
   )
 }
 

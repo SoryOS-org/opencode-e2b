@@ -39,6 +39,7 @@ type SandboxListOptionsWithLogger = NonNullable<Parameters<typeof Sandbox.list>[
 type WorkspaceSandboxCreateOptions = SandboxOpts
 
 const workspaceSandboxRecordPromises = new Map<string, Promise<WorkspaceSandboxRecord | undefined>>()
+const PROVISIONING_LOCK_SANDBOX_ID = "__provisioning__"
 
 export function buildWorkspaceSandboxMetadata(
   info: WorkspaceInfo,
@@ -395,6 +396,34 @@ export async function upsertProvisioningSandbox(
       error: errorMessage(error),
     })
   }
+}
+
+export async function claimProvisioningSandbox(
+  store: SandboxStore | undefined,
+  input: Omit<CachedSandboxInput, "sandboxID">,
+  logger?: PluginLogger,
+): Promise<boolean> {
+  if (!store) return true
+  try {
+    return await store.claimProvisioning({
+      ...input,
+      sandboxID: PROVISIONING_LOCK_SANDBOX_ID,
+    })
+  } catch (error) {
+    await logger?.warn("sandbox cache provisioning claim failed; proceeding without durable lock", {
+      workspaceID: input.workspaceID,
+      error: errorMessage(error),
+    })
+    return true
+  }
+}
+
+export async function releaseProvisioningSandbox(
+  store: SandboxStore | undefined,
+  workspaceID: string,
+  logger?: PluginLogger,
+): Promise<void> {
+  await deleteCachedSandbox(store, workspaceID, PROVISIONING_LOCK_SANDBOX_ID, logger)
 }
 
 export async function markSandboxReady(

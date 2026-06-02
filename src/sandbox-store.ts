@@ -7,6 +7,7 @@ import { errorMessage } from "./shared.js"
 import type { PluginLogger } from "./types.js"
 
 const STORE_SCHEMA_VERSION = 1
+const PROVISIONING_LOCK_STALE_MS = 5 * 60 * 1000
 
 export type CachedSandboxStatus = "provisioning" | "ready" | "failed"
 
@@ -27,6 +28,7 @@ export type CachedSandboxInput = {
 
 export type SandboxStore = {
   get(workspaceID: string): Promise<CachedSandbox | undefined>
+  claimProvisioning(input: CachedSandboxInput): Promise<boolean>
   upsertProvisioning(input: CachedSandboxInput): Promise<void>
   markReady(input: CachedSandboxInput): Promise<void>
   markFailed(workspaceID: string, sandboxID: string): Promise<void>
@@ -87,6 +89,9 @@ export function createNoopSandboxStore(): SandboxStore {
   return {
     async get() {
       return undefined
+    },
+    async claimProvisioning() {
+      return true
     },
     async upsertProvisioning() {},
     async markReady() {},
@@ -159,6 +164,34 @@ class SQLiteSandboxStore implements SandboxStore {
 
   async upsertProvisioning(input: CachedSandboxInput): Promise<void> {
     this.upsert(input, "provisioning", undefined)
+  }
+
+  async claimProvisioning(input: CachedSandboxInput): Promise<boolean> {
+    const now = Date.now()
+    const result = this.db
+      .query(
+        `INSERT INTO workspace_sandbox (
+           workspace_id, sandbox_id, metadata_json, status, updated_at_ms, verified_at_ms
+         ) VALUES (
+           $workspaceID, $sandboxID, $metadataJson, 'provisioning', $updatedAtMs, NULL
+         ) ON CONFLICT(workspace_id) DO UPDATE SET
+           sandbox_id = excluded.sandbox_id,
+           metadata_json = excluded.metadata_json,
+           status = 'provisioning',
+           updated_at_ms = excluded.updated_at_ms,
+           verified_at_ms = NULL
+         WHERE workspace_sandbox.status = 'failed'
+           OR (workspace_sandbox.status = 'provisioning' AND workspace_sandbox.updated_at_ms < $staleBeforeMs)`,
+      )
+      .run({
+        $workspaceID: input.workspaceID,
+        $sandboxID: input.sandboxID,
+        $metadataJson: JSON.stringify(input.metadata),
+        $updatedAtMs: now,
+        $staleBeforeMs: now - PROVISIONING_LOCK_STALE_MS,
+      }) as { changes?: number }
+
+    return (result.changes ?? 0) > 0
   }
 
   async markReady(input: CachedSandboxInput): Promise<void> {

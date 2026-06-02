@@ -4,12 +4,14 @@ import { bootstrapWorkspace } from "./bootstrap.js"
 import { buildFreshCompatibility, resolveWorkspaceCompatibility, resolveWorkspaceConfig } from "./config.js"
 import {
   buildWorkspaceSandboxMetadata,
+  claimProvisioningSandbox,
   createWorkspaceSandbox,
   deleteCachedSandbox,
   findWorkspaceSandboxRecord,
   markSandboxFailed,
   markSandboxReady,
   readSandboxCompatibility,
+  releaseProvisioningSandbox,
   sandboxBaseUrl,
   sandboxTargetHeaders,
   upsertProvisioningSandbox,
@@ -172,14 +174,34 @@ async function provisionFreshWorkspace(params: {
   })
   const freshCompatibility = buildFreshCompatibility(params.config, params.runtimeVersion)
   const metadata = buildWorkspaceSandboxMetadata(params.info, params.config, freshCompatibility)
-  const sandbox = await createWorkspaceSandbox(
-    params.info,
-    params.config,
-    freshCompatibility,
-    params.runtimeVersion,
-    pluginPackageVersion,
+  stage = "claim-provisioning"
+  const claimed = await claimProvisioningSandbox(
+    params.store,
+    {
+      workspaceID: params.info.id,
+      metadata,
+    },
     params.logger,
   )
+  if (!claimed) {
+    throw new Error(`Workspace ${params.info.id} is already being provisioned`)
+  }
+
+  stage = "create-sandbox"
+  let sandbox: Awaited<ReturnType<typeof createWorkspaceSandbox>>
+  try {
+    sandbox = await createWorkspaceSandbox(
+      params.info,
+      params.config,
+      freshCompatibility,
+      params.runtimeVersion,
+      pluginPackageVersion,
+      params.logger,
+    )
+  } catch (error) {
+    await releaseProvisioningSandbox(params.store, params.info.id, params.logger)
+    throw error
+  }
   const cacheInput = {
     workspaceID: params.info.id,
     sandboxID: sandbox.sandboxId,

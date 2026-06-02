@@ -5,9 +5,11 @@ import { Sandbox, SandboxNotFoundError, Template } from "e2b"
 
 import { normalizeOptions } from "../dist/config.js"
 import {
+  claimProvisioningSandbox,
   createWorkspaceSandbox,
   findWorkspaceSandboxRecord,
   readSandboxCompatibility,
+  releaseProvisioningSandbox,
   removeWorkspaceSandbox,
   sandboxBaseUrl,
   sandboxTargetHeaders,
@@ -71,6 +73,23 @@ test("readSandboxCompatibility treats invalid flags as unknown", () => {
     flags: [],
   })
   assert.deepEqual(readSandboxCompatibility({ opencodeFlags: JSON.stringify([1]) }).flags, [])
+})
+
+test("claimProvisioningSandbox creates a durable provisioning claim", async () => {
+  const store = createMemoryStore(undefined)
+  const input = {
+    workspaceID: workspaceInfo.id,
+    metadata: { opencodeWorkspaceId: workspaceInfo.id },
+  }
+
+  assert.equal(await claimProvisioningSandbox(store, input), true)
+  assert.equal(store.row.workspaceID, workspaceInfo.id)
+  assert.equal(store.row.status, "provisioning")
+
+  assert.equal(await claimProvisioningSandbox(store, input), false)
+
+  await releaseProvisioningSandbox(store, workspaceInfo.id)
+  assert.equal(store.row, undefined)
 })
 
 test("createWorkspaceSandbox wraps versioned published templates", async () => {
@@ -451,6 +470,11 @@ function createMemoryStore(row) {
     deleted: [],
     async get(workspaceID) {
       return this.row?.workspaceID === workspaceID ? this.row : undefined
+    },
+    async claimProvisioning(input) {
+      if (this.row?.workspaceID === input.workspaceID && this.row.status !== "failed") return false
+      this.row = { ...input, status: "provisioning" }
+      return true
     },
     async upsertProvisioning(input) {
       this.row = { ...input, status: "provisioning" }

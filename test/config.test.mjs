@@ -17,7 +17,7 @@ test("normalizeOptions applies stable defaults", () => {
   assert.equal(config.projectPath, "/home/user/project")
   assert.equal(config.serverPort, 4096)
   assert.equal(config.secure, true)
-  assert.equal(config.network.allowPublicTraffic, true)
+  assert.equal(config.network.allowPublicTraffic, false)
   assert.deepEqual(config.upload.ignore, [
     ".git",
     "node_modules",

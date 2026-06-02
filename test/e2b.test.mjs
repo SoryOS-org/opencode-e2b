@@ -40,15 +40,21 @@ test("sandboxBaseUrl builds the gateway URL for the configured server port", () 
   )
 })
 
-test("sandboxTargetHeaders returns secure access headers only when needed", () => {
-  const secureConfig = normalizeOptions({ secure: true })
-  const publicConfig = normalizeOptions({ secure: false })
-
-  assert.deepEqual(sandboxTargetHeaders({ trafficAccessToken: "token" }, secureConfig), {
-    "X-Access-Token": "token",
+test("sandboxTargetHeaders returns private traffic headers only when needed", () => {
+  const privateTrafficConfig = normalizeOptions({
+    secure: false,
+    network: { allowPublicTraffic: false },
   })
-  assert.equal(sandboxTargetHeaders({ trafficAccessToken: "token" }, publicConfig), undefined)
-  assert.throws(() => sandboxTargetHeaders({}, secureConfig), /did not provide an access token/)
+  const publicTrafficConfig = normalizeOptions({
+    secure: true,
+    network: { allowPublicTraffic: true },
+  })
+
+  assert.deepEqual(sandboxTargetHeaders({ trafficAccessToken: "token" }, privateTrafficConfig), {
+    "e2b-traffic-access-token": "token",
+  })
+  assert.equal(sandboxTargetHeaders({ trafficAccessToken: "token" }, publicTrafficConfig), undefined)
+  assert.throws(() => sandboxTargetHeaders({}, privateTrafficConfig), /traffic access token/)
 })
 
 test("readSandboxCompatibility parses valid metadata flags", () => {

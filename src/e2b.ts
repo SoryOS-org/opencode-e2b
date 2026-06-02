@@ -283,11 +283,13 @@ export function sandboxTargetHeaders(
   sandbox: Sandbox,
   config: NormalizedE2BWorkspaceConfig,
 ): Record<string, string> | undefined {
-  if (!config.secure) return undefined
+  if (config.network.allowPublicTraffic) return undefined
   if (!sandbox.trafficAccessToken) {
-    throw new Error("Secure E2B sandbox traffic is enabled, but the sandbox did not provide an access token")
+    throw new Error(
+      "Private E2B sandbox traffic is enabled, but the sandbox did not provide a traffic access token",
+    )
   }
-  return { "X-Access-Token": sandbox.trafficAccessToken }
+  return { "e2b-traffic-access-token": sandbox.trafficAccessToken }
 }
 
 export async function removeWorkspaceSandbox(

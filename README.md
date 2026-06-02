@@ -76,7 +76,8 @@ Common options:
 - `sandboxTimeoutMs`: E2B sandbox timeout. Default: 1 hour.
 - `projectPath`: project directory inside the sandbox. Default: `/home/user/project`.
 - `serverPort`: remote OpenCode server port. Default: `4096`.
-- `secure`: enable E2B secure sandbox traffic. When enabled, target requests include the sandbox access token header.
+- `secure`: enable E2B secure sandbox controller traffic. Default: `true`.
+- `network.allowPublicTraffic`: allow unauthenticated access to sandbox service URLs. Default: `false`. When disabled, target requests include E2B's `e2b-traffic-access-token` header.
 - `upload.ignore`: path literals or path segments skipped during snapshot upload.
 - `upload.includeDotGit`: include the local `.git` directory. Default: `false`.
 - `upload.followSymlinks`: follow symlinks during upload. Default: `false`.

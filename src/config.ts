@@ -48,7 +48,7 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
     serverPort,
     secure: options?.secure ?? true,
     network: {
-      allowPublicTraffic: options?.network?.allowPublicTraffic ?? true,
+      allowPublicTraffic: options?.network?.allowPublicTraffic ?? false,
       allowOut: options?.network?.allowOut ?? [],
       denyOut: options?.network?.denyOut ?? [],
       maskRequestHost: options?.network?.maskRequestHost ?? "",

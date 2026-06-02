@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "bun:test"
 
-import { RateLimitError, Sandbox, SandboxNotFoundError, Template } from "e2b"
+import { Sandbox, SandboxNotFoundError, Template } from "e2b"
 
 import { normalizeOptions } from "../dist/config.js"
 import {
@@ -74,6 +74,8 @@ test("readSandboxCompatibility treats invalid flags as unknown", () => {
 })
 
 test("createWorkspaceSandbox wraps versioned published templates", async () => {
+  const originalApiKey = process.env.E2B_API_KEY
+  const originalFetch = globalThis.fetch
   const originalCreate = Sandbox.create
   const originalGetTags = Template.getTags
   const originalBuild = Template.build
@@ -94,9 +96,14 @@ test("createWorkspaceSandbox wraps versioned published templates", async () => {
     calls.push(["create", template, options.metadata.opencodeWorkspaceId])
     return { sandboxId: "workspace-sandbox" }
   }
-  Template.getTags = async (name) => {
-    calls.push(["getTags", name])
-    return name === "e2b/opencode:v1.14.39" ? [{ tag: "default" }] : []
+  process.env.E2B_API_KEY = "e2b_test"
+  globalThis.fetch = async (input, init) => {
+    const method = init?.method ?? input.method ?? "GET"
+    calls.push(["fetch", method])
+    return jsonResponse([])
+  }
+  Template.getTags = async () => {
+    throw new Error("workspace sandbox creation should not call getTags")
   }
   Template.build = async (_template, name) => {
     calls.push(["build", name])
@@ -113,12 +120,13 @@ test("createWorkspaceSandbox wraps versioned published templates", async () => {
 
     assert.equal(sandbox.sandboxId, "workspace-sandbox")
     assert.deepEqual(calls, [
-      ["getTags", "e2b/opencode:v1.14.39"],
-      ["getTags", alias],
+      ["fetch", "GET"],
       ["build", alias],
       ["create", alias, "workspace-id"],
     ])
   } finally {
+    restoreTestEnv(originalApiKey)
+    globalThis.fetch = originalFetch
     Sandbox.create = originalCreate
     Template.getTags = originalGetTags
     Template.build = originalBuild
@@ -126,6 +134,8 @@ test("createWorkspaceSandbox wraps versioned published templates", async () => {
 })
 
 test("createWorkspaceSandbox builds a managed base when published template is missing", async () => {
+  const originalApiKey = process.env.E2B_API_KEY
+  const originalFetch = globalThis.fetch
   const originalCreate = Sandbox.create
   const originalGetTags = Template.getTags
   const originalBuild = Template.build
@@ -133,6 +143,14 @@ test("createWorkspaceSandbox builds a managed base when published template is mi
   const runtimeVersion = "1.14.38"
   const pluginPackageVersion = "managed-fallback-test"
   const config = normalizeOptions()
+  const publishedWrapperAlias = buildManagedWorkspaceTemplateAlias({
+    baseTemplate: "e2b/opencode:v1.14.38",
+    nodeVariant: config.nodeVariant,
+    runtimeVersion,
+    projectPath: config.projectPath,
+    serverPort: config.serverPort,
+    pluginPackageVersion,
+  })
   const baseAlias = buildManagedBaseTemplateAlias({
     nodeVariant: config.nodeVariant,
     runtimeVersion,
@@ -151,13 +169,20 @@ test("createWorkspaceSandbox builds a managed base when published template is mi
     calls.push(["create", template])
     return { sandboxId: "managed-sandbox" }
   }
-  Template.getTags = async (name) => {
-    calls.push(["getTags", name])
-    if (name === "e2b/opencode:v1.14.38") throw new Error("404: tag does not exist")
-    return []
+  process.env.E2B_API_KEY = "e2b_test"
+  globalThis.fetch = async (input, init) => {
+    const method = init?.method ?? input.method ?? "GET"
+    calls.push(["fetch", method])
+    return jsonResponse([])
+  }
+  Template.getTags = async () => {
+    throw new Error("workspace sandbox creation should not call getTags")
   }
   Template.build = async (_template, name) => {
     calls.push(["build", name])
+    if (name === publishedWrapperAlias) {
+      throw new Error("published template unavailable")
+    }
   }
 
   try {
@@ -171,37 +196,53 @@ test("createWorkspaceSandbox builds a managed base when published template is mi
 
     assert.equal(sandbox.sandboxId, "managed-sandbox")
     assert.deepEqual(calls, [
-      ["getTags", "e2b/opencode:v1.14.38"],
-      ["getTags", baseAlias],
+      ["fetch", "GET"],
+      ["build", publishedWrapperAlias],
+      ["fetch", "GET"],
+      ["fetch", "GET"],
       ["build", baseAlias],
-      ["getTags", wrapperAlias],
+      ["fetch", "GET"],
       ["build", wrapperAlias],
       ["create", wrapperAlias],
     ])
   } finally {
+    restoreTestEnv(originalApiKey)
+    globalThis.fetch = originalFetch
     Sandbox.create = originalCreate
     Template.getTags = originalGetTags
     Template.build = originalBuild
   }
 })
 
-test("createWorkspaceSandbox does not fall back on published template rate limits", async () => {
+test("createWorkspaceSandbox never calls template getTags", async () => {
+  const originalApiKey = process.env.E2B_API_KEY
+  const originalFetch = globalThis.fetch
+  const originalCreate = Sandbox.create
   const originalGetTags = Template.getTags
   const originalBuild = Template.build
 
+  process.env.E2B_API_KEY = "e2b_test"
+  globalThis.fetch = async () => jsonResponse([])
+  Sandbox.create = async () => ({ sandboxId: "workspace-sandbox" })
   Template.getTags = async () => {
-    throw new RateLimitError("limited")
+    throw new Error("getTags should not be called")
   }
-  Template.build = async () => {
-    throw new Error("templates should not build after a rate limit")
-  }
+  Template.build = async () => {}
 
   try {
-    await assert.rejects(
-      createWorkspaceSandbox(workspaceInfo, normalizeOptions(), compatibility, "1.14.37", "rate-limit-test"),
-      RateLimitError,
+    const sandbox = await createWorkspaceSandbox(
+      workspaceInfo,
+      normalizeOptions(),
+      compatibility,
+      "1.14.37",
+      "no-get-tags-test",
     )
+
+    assert.equal(sandbox.sandboxId, "workspace-sandbox")
   } finally {
+    restoreTestEnv(originalApiKey)
+    globalThis.fetch = originalFetch
+    Sandbox.create = originalCreate
     Template.getTags = originalGetTags
     Template.build = originalBuild
   }
@@ -384,6 +425,23 @@ function createPaginator(pages) {
     async nextItems() {
       return pages[index++] ?? []
     },
+  }
+}
+
+function jsonResponse(data) {
+  return new Response(JSON.stringify(data), {
+    status: 200,
+    headers: {
+      "content-type": "application/json",
+    },
+  })
+}
+
+function restoreTestEnv(originalApiKey) {
+  if (originalApiKey === undefined) {
+    delete process.env.E2B_API_KEY
+  } else {
+    process.env.E2B_API_KEY = originalApiKey
   }
 }
 

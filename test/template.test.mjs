@@ -16,7 +16,6 @@ import {
   buildSystemdUnitContent,
   ensureManagedWorkspaceTemplate,
   MANAGED_TEMPLATE_PREFIX,
-  resolveOpenCodeBaseTemplate,
   RUNTIME_ENV_FILE,
 } from "../dist/template.js"
 
@@ -122,66 +121,9 @@ test("buildSystemdStartCommand starts the service and streams opencode logs", ()
   assert.match(command, /sudo journalctl -fu opencode-e2b\.service -o cat/)
 })
 
-test("resolveOpenCodeBaseTemplate uses published opencode templates when present", async () => {
-  const originalGetTags = Template.getTags
-  const originalBuild = Template.build
-  const calls = []
-
-  Template.getTags = async (name) => {
-    calls.push(["getTags", name])
-    return name === "e2b/opencode:v1.14.30" ? [{ tag: "default" }] : []
-  }
-  Template.build = async () => {
-    throw new Error("published base should not build a managed base template")
-  }
-
-  try {
-    const template = await resolveOpenCodeBaseTemplate(baseTemplateInputs)
-
-    assert.equal(template, "e2b/opencode:v1.14.30")
-    assert.deepEqual(calls, [["getTags", "e2b/opencode:v1.14.30"]])
-  } finally {
-    Template.getTags = originalGetTags
-    Template.build = originalBuild
-  }
-})
-
-test("resolveOpenCodeBaseTemplate builds a managed base when published template is missing", async () => {
-  const originalGetTags = Template.getTags
-  const originalBuild = Template.build
-  const calls = []
-  const inputs = {
-    ...baseTemplateInputs,
-    runtimeVersion: "9.8.7",
-    pluginPackageVersion: "managed-base-test",
-  }
-  const alias = buildManagedBaseTemplateAlias(inputs)
-
-  Template.getTags = async (name) => {
-    calls.push(["getTags", name])
-    if (name === "e2b/opencode:v9.8.7") throw new Error("404: tag does not exist")
-    return []
-  }
-  Template.build = async (_template, name) => {
-    calls.push(["build", name])
-  }
-
-  try {
-    const template = await resolveOpenCodeBaseTemplate(inputs)
-
-    assert.equal(template, alias)
-    assert.deepEqual(calls, [
-      ["getTags", "e2b/opencode:v9.8.7"],
-      ["getTags", alias],
-      ["build", alias],
-    ])
-  } finally {
-    Template.getTags = originalGetTags
-    Template.build = originalBuild
-  }
-})
-
 test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
+  const originalApiKey = process.env.E2B_API_KEY
+  const originalFetch = globalThis.fetch
   const originalGetTags = Template.getTags
   const originalBuild = Template.build
   const calls = []
@@ -191,9 +133,14 @@ test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
     pluginPackageVersion: "fallback-test",
   }
 
-  Template.getTags = async (name) => {
-    calls.push(["getTags", name])
-    return []
+  process.env.E2B_API_KEY = "e2b_test"
+  Template.getTags = async () => {
+    throw new Error("managed template lookup should not call getTags")
+  }
+  globalThis.fetch = async (input, init) => {
+    const method = init?.method ?? input.method ?? "GET"
+    calls.push(["fetch", method])
+    return jsonResponse([])
   }
   Template.build = async (_template, name) => {
     calls.push(["build", name])
@@ -205,10 +152,12 @@ test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
 
     assert.equal(template, alias)
     assert.deepEqual(calls, [
-      ["getTags", alias],
+      ["fetch", "GET"],
       ["build", alias],
     ])
   } finally {
+    restoreTestEnv(originalApiKey)
+    globalThis.fetch = originalFetch
     Template.getTags = originalGetTags
     Template.build = originalBuild
   }
@@ -228,9 +177,8 @@ test("ensureManagedWorkspaceTemplate deletes errored managed templates before re
   const alias = buildManagedTemplateAlias(inputs)
 
   process.env.E2B_API_KEY = "e2b_test"
-  Template.getTags = async (name) => {
-    calls.push(["getTags", name])
-    return name === alias ? [{ tag: "default" }] : []
+  Template.getTags = async () => {
+    throw new Error("managed template lookup should not call getTags")
   }
   Template.build = async (_template, name) => {
     calls.push(["build", name])
@@ -256,7 +204,6 @@ test("ensureManagedWorkspaceTemplate deletes errored managed templates before re
 
     assert.equal(template, alias)
     assert.deepEqual(calls, [
-      ["getTags", alias],
       ["fetch", "GET"],
       ["fetch", "DELETE"],
       ["build", alias],
@@ -284,9 +231,8 @@ test("ensureManagedWorkspaceTemplate waits for in-progress managed templates", a
   const statuses = ["building", "ready"]
 
   process.env.E2B_API_KEY = "e2b_test"
-  Template.getTags = async (name) => {
-    calls.push(["getTags", name])
-    return name === alias ? [{ tag: "default" }] : []
+  Template.getTags = async () => {
+    throw new Error("managed template lookup should not call getTags")
   }
   Template.build = async () => {
     throw new Error("managed template build should not run while another build is pending")
@@ -310,7 +256,6 @@ test("ensureManagedWorkspaceTemplate waits for in-progress managed templates", a
 
     assert.equal(template, alias)
     assert.deepEqual(calls, [
-      ["getTags", alias],
       ["fetch", "GET", "building"],
       ["fetch", "GET", "ready"],
     ])

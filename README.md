@@ -44,7 +44,7 @@ The plugin is loaded by OpenCode's Bun runtime and uses Bun as its development r
 
 ## Runtime Behavior
 
-The plugin builds sandboxes from a local workspace wrapper template. That wrapper is layered on top of the published E2B template `e2b/opencode:v<runtimeVersion>` when it exists. If the published runtime template is missing, the plugin first builds a managed base template from the configured Node image and installs the pinned OpenCode runtime there, then builds the same workspace wrapper on top of that base.
+The plugin builds sandboxes from a local workspace wrapper template. That wrapper first tries to layer on top of the published E2B template `e2b/opencode:v<runtimeVersion>`. E2B cannot call `get_tags` across teams, so the plugin does not preflight published template tags; it tries the published base directly and falls back if that wrapper build fails. If the published runtime template is unavailable, the plugin builds a managed base template from the configured Node image and installs the pinned OpenCode runtime there, then builds the same workspace wrapper on top of that base.
 
 Managed base and workspace templates use the `opencode-e2b-` alias prefix. Base templates are keyed by Node image, OpenCode runtime version, and plugin package version. Workspace wrapper templates are keyed by the selected base template, project path, server port, and plugin package version.
 

@@ -8,7 +8,6 @@ import {
   createE2BConnectionOptions,
   deleteE2BTemplate,
   findE2BTemplateByAlias,
-  isE2BNotFoundError,
   listE2BTemplates,
   type E2BTemplateListEntry,
 } from "./e2b-sdk.js"
@@ -66,27 +65,6 @@ export type ManagedBaseTemplateInputs = {
 
 export type ManagedWorkspaceTemplateInputs = ManagedTemplateInputs & {
   baseTemplate: string
-}
-
-export async function resolveOpenCodeBaseTemplate(
-  inputs: ManagedBaseTemplateInputs,
-  logger?: PluginLogger,
-): Promise<string> {
-  const publishedTemplate = buildPrebuiltOpenCodeTemplateName(inputs.runtimeVersion)
-  if (await templateExists(publishedTemplate, logger)) {
-    await logger?.info("published opencode template found", {
-      template: publishedTemplate,
-      runtimeVersion: inputs.runtimeVersion,
-    })
-    return publishedTemplate
-  }
-
-  await logger?.warn("published opencode template missing; building managed base template", {
-    template: publishedTemplate,
-    runtimeVersion: inputs.runtimeVersion,
-  })
-
-  return ensureManagedBaseTemplate(inputs, logger)
 }
 
 export async function ensureManagedBaseTemplate(
@@ -300,37 +278,6 @@ async function buildManagedWorkspaceTemplate(
   }
 }
 
-async function templateExists(alias: string, logger?: PluginLogger): Promise<boolean> {
-  try {
-    await Template.getTags(alias, {
-      ...createE2BConnectionOptions(logger),
-    })
-    return true
-  } catch (error) {
-    if (isE2BNotFoundError(error)) {
-      return false
-    }
-
-    throw error
-  }
-}
-
-async function templateHasDefaultTag(alias: string, logger?: PluginLogger): Promise<boolean> {
-  try {
-    return (
-      await Template.getTags(alias, {
-        ...createE2BConnectionOptions(logger),
-      })
-    ).some((item) => item.tag === "default")
-  } catch (error) {
-    if (isE2BNotFoundError(error)) {
-      return false
-    }
-
-    throw error
-  }
-}
-
 export function buildOpenCodeInstallCommand(runtimeVersion: string): string {
   return `npm install -g --omit=optional opencode-ai@${runtimeVersion}`
 }
@@ -340,10 +287,6 @@ export function buildPrebuiltOpenCodeTemplateName(runtimeVersion: string): strin
 }
 
 async function findManagedTemplateState(alias: string, logger?: PluginLogger): Promise<ManagedTemplateState> {
-  if (!(await templateHasDefaultTag(alias, logger))) {
-    return { kind: "missing" }
-  }
-
   return findListedManagedTemplateState(alias, logger)
 }
 

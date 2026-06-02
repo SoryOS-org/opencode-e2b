@@ -5,7 +5,11 @@ import { createE2BConnectionOptions } from "./e2b-sdk.js"
 import { forgetSandboxCompatibility } from "./runtime.js"
 import type { CachedSandboxInput, SandboxStore } from "./sandbox-store.js"
 import { errorMessage } from "./shared.js"
-import { ensureManagedWorkspaceTemplate, resolveOpenCodeBaseTemplate } from "./template.js"
+import {
+  buildPrebuiltOpenCodeTemplateName,
+  ensureManagedBaseTemplate,
+  ensureManagedWorkspaceTemplate,
+} from "./template.js"
 import type {
   NormalizedE2BWorkspaceConfig,
   PersistedWorkspaceCompatibility,
@@ -60,26 +64,45 @@ export async function createWorkspaceSandbox(
   logger?: PluginLogger,
 ): Promise<Sandbox> {
   const sandboxOptions = buildSandboxCreateOptions(info, config, compatibility, logger)
-  const baseTemplate = await resolveOpenCodeBaseTemplate(
-    {
-      nodeVariant: config.nodeVariant,
-      runtimeVersion,
-      pluginPackageVersion,
-    },
-    logger,
-  )
+  const templateInputs = {
+    nodeVariant: config.nodeVariant,
+    runtimeVersion,
+    pluginPackageVersion,
+  }
+  const workspaceTemplateInputs = {
+    ...templateInputs,
+    projectPath: config.projectPath,
+    serverPort: config.serverPort,
+  }
+  const publishedBaseTemplate = buildPrebuiltOpenCodeTemplateName(runtimeVersion)
+  let managedTemplate: string
 
-  const managedTemplate = await ensureManagedWorkspaceTemplate(
-    {
-      baseTemplate,
-      nodeVariant: config.nodeVariant,
+  // Do not preflight this with Template.getTags: E2B cannot call get_tags
+  // across teams, so published templates must be tried directly and handled
+  // through the build failure path.
+  try {
+    managedTemplate = await ensureManagedWorkspaceTemplate(
+      {
+        ...workspaceTemplateInputs,
+        baseTemplate: publishedBaseTemplate,
+      },
+      logger,
+    )
+  } catch (error) {
+    await logger?.warn("published opencode base template failed; building managed base template", {
+      template: publishedBaseTemplate,
       runtimeVersion,
-      projectPath: config.projectPath,
-      serverPort: config.serverPort,
-      pluginPackageVersion,
-    },
-    logger,
-  )
+      error: errorMessage(error),
+    })
+    const managedBaseTemplate = await ensureManagedBaseTemplate(templateInputs, logger)
+    managedTemplate = await ensureManagedWorkspaceTemplate(
+      {
+        ...workspaceTemplateInputs,
+        baseTemplate: managedBaseTemplate,
+      },
+      logger,
+    )
+  }
 
   return Sandbox.create(managedTemplate, sandboxOptions)
 }

@@ -260,7 +260,7 @@ async function buildManagedWorkspaceTemplate(
         return alias
       } catch (retryError) {
         throw new Error(
-          `Failed to build managed E2B template ${alias} from node image ${inputs.nodeVariant}: ${errorMessage(retryError)}`,
+          `Failed to build managed E2B workspace template ${alias} from base template ${inputs.baseTemplate}: ${errorMessage(retryError)}`,
         )
       }
     }
@@ -273,7 +273,7 @@ async function buildManagedWorkspaceTemplate(
     }
 
     throw new Error(
-      `Failed to build managed E2B template ${alias} from node image ${inputs.nodeVariant}: ${errorMessage(error)}`,
+      `Failed to build managed E2B workspace template ${alias} from base template ${inputs.baseTemplate}: ${errorMessage(error)}`,
     )
   }
 }

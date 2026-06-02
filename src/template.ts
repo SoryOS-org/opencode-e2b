@@ -31,7 +31,8 @@ const START_COMMAND_LOG_PATH = "/tmp/opencode-serve.log"
 const SYSTEMD_SERVICE_NAME = "opencode-e2b.service"
 const SYSTEMD_SERVICE_PATH = `/etc/systemd/system/${SYSTEMD_SERVICE_NAME}`
 const SYSTEMD_START_SCRIPT_PATH = "/usr/local/bin/opencode-e2b-start"
-const MANAGED_TEMPLATE_IMPLEMENTATION_VERSION = "systemd-marker-v1"
+const MANAGED_BASE_TEMPLATE_IMPLEMENTATION_VERSION = "base-runtime-v1"
+const MANAGED_WORKSPACE_TEMPLATE_IMPLEMENTATION_VERSION = "workspace-systemd-wrapper-v1"
 
 /**
  * E2B's `Sandbox.create({ envs })` only affects later commands, not the
@@ -60,11 +61,65 @@ export type ManagedTemplateInputs = {
   pluginPackageVersion: string
 }
 
-export async function ensureManagedWorkspaceTemplate(
-  inputs: ManagedTemplateInputs,
+export type ManagedBaseTemplateInputs = {
+  nodeVariant: string
+  runtimeVersion: string
+  pluginPackageVersion: string
+}
+
+export type ManagedWorkspaceTemplateInputs = ManagedTemplateInputs & {
+  baseTemplate: string
+}
+
+export async function resolveOpenCodeBaseTemplate(
+  inputs: ManagedBaseTemplateInputs,
   logger?: PluginLogger,
 ): Promise<string> {
-  const alias = buildManagedTemplateAlias(inputs)
+  const publishedTemplate = buildPrebuiltOpenCodeTemplateName(inputs.runtimeVersion)
+  if (await templateExists(publishedTemplate, logger)) {
+    await logger?.info("published opencode template found", {
+      template: publishedTemplate,
+      runtimeVersion: inputs.runtimeVersion,
+    })
+    return publishedTemplate
+  }
+
+  await logger?.warn("published opencode template missing; building managed base template", {
+    template: publishedTemplate,
+    runtimeVersion: inputs.runtimeVersion,
+  })
+
+  return ensureManagedBaseTemplate(inputs, logger)
+}
+
+export async function ensureManagedBaseTemplate(
+  inputs: ManagedBaseTemplateInputs,
+  logger?: PluginLogger,
+): Promise<string> {
+  const alias = buildManagedBaseTemplateAlias(inputs)
+  const existing = managedTemplatePromises.get(alias)
+  if (existing) {
+    return existing
+  }
+
+  const resolution = buildManagedBaseTemplate(inputs, alias, logger)
+  managedTemplatePromises.set(alias, resolution)
+
+  try {
+    return await resolution
+  } catch (error) {
+    if (managedTemplatePromises.get(alias) === resolution) {
+      managedTemplatePromises.delete(alias)
+    }
+    throw error
+  }
+}
+
+export async function ensureManagedWorkspaceTemplate(
+  inputs: ManagedWorkspaceTemplateInputs,
+  logger?: PluginLogger,
+): Promise<string> {
+  const alias = buildManagedWorkspaceTemplateAlias(inputs)
   const existing = managedTemplatePromises.get(alias)
   if (existing) {
     return existing
@@ -83,12 +138,89 @@ export async function ensureManagedWorkspaceTemplate(
   }
 }
 
+async function buildManagedBaseTemplate(
+  inputs: ManagedBaseTemplateInputs,
+  alias: string,
+  logger?: PluginLogger,
+): Promise<string> {
+  await logger?.info("managed base template lookup start", {
+    nodeVariant: inputs.nodeVariant,
+    runtimeVersion: inputs.runtimeVersion,
+    pluginPackageVersion: inputs.pluginPackageVersion,
+    alias,
+  })
+
+  const existingTemplate = await findManagedTemplateState(alias, logger)
+  if (existingTemplate.kind === "ready") {
+    await logger?.info("managed base template reuse", {
+      alias,
+    })
+    return alias
+  }
+  if (existingTemplate.kind === "pending") {
+    await logger?.info("managed base template build already in progress", {
+      alias,
+      buildStatus: existingTemplate.template.buildStatus,
+    })
+    await waitForManagedTemplateReady(alias, logger)
+    return alias
+  }
+  if (existingTemplate.kind === "failed") {
+    await deleteFailedManagedTemplate(alias, existingTemplate.template, logger)
+  }
+
+  await logger?.info("managed base template build start", {
+    nodeVariant: inputs.nodeVariant,
+    runtimeVersion: inputs.runtimeVersion,
+    alias,
+  })
+
+  const template = Template()
+    .fromNodeImage(inputs.nodeVariant)
+    .runCmd(buildOpenCodeInstallCommand(inputs.runtimeVersion), { user: "root" })
+
+  try {
+    await buildManagedTemplateOnce(template, alias, logger)
+    await logger?.info("managed base template build complete", {
+      alias,
+    })
+    return alias
+  } catch (error) {
+    const raceResolution = await resolveManagedTemplateBuildRace(alias, logger)
+    if (raceResolution === "retry") {
+      try {
+        await buildManagedTemplateOnce(template, alias, logger)
+        await logger?.info("managed base template build complete", {
+          alias,
+        })
+        return alias
+      } catch (retryError) {
+        throw new Error(
+          `Failed to build managed E2B base template ${alias} from node image ${inputs.nodeVariant}: ${errorMessage(retryError)}`,
+        )
+      }
+    }
+    if (raceResolution === "reuse") {
+      await logger?.warn("managed base template build raced with existing alias", {
+        alias,
+        error: errorMessage(error),
+      })
+      return alias
+    }
+
+    throw new Error(
+      `Failed to build managed E2B base template ${alias} from node image ${inputs.nodeVariant}: ${errorMessage(error)}`,
+    )
+  }
+}
+
 async function buildManagedWorkspaceTemplate(
-  inputs: ManagedTemplateInputs,
+  inputs: ManagedWorkspaceTemplateInputs,
   alias: string,
   logger?: PluginLogger,
 ): Promise<string> {
   await logger?.info("managed template lookup start", {
+    baseTemplate: inputs.baseTemplate,
     nodeVariant: inputs.nodeVariant,
     runtimeVersion: inputs.runtimeVersion,
     projectPath: inputs.projectPath,
@@ -117,14 +249,12 @@ async function buildManagedWorkspaceTemplate(
   }
 
   await logger?.info("managed template build start", {
-    nodeVariant: inputs.nodeVariant,
-    runtimeVersion: inputs.runtimeVersion,
+    baseTemplate: inputs.baseTemplate,
     alias,
   })
 
   const template = Template()
-    .fromNodeImage(inputs.nodeVariant)
-    .runCmd(buildOpenCodeInstallCommand(inputs.runtimeVersion), { user: "root" })
+    .fromTemplate(inputs.baseTemplate)
     .runCmd(buildSystemdServiceInstallCommand(inputs.projectPath, inputs.serverPort), { user: "root" })
     .setStartCmd(
       buildSystemdStartCommand(),
@@ -173,6 +303,21 @@ async function buildManagedWorkspaceTemplate(
   }
 }
 
+async function templateExists(alias: string, logger?: PluginLogger): Promise<boolean> {
+  try {
+    await Template.getTags(alias, {
+      ...createE2BConnectionOptions(logger),
+    })
+    return true
+  } catch (error) {
+    if (isE2BNotFoundError(error)) {
+      return false
+    }
+
+    throw error
+  }
+}
+
 async function templateHasDefaultTag(alias: string, logger?: PluginLogger): Promise<boolean> {
   try {
     return (
@@ -194,7 +339,7 @@ export function buildOpenCodeInstallCommand(runtimeVersion: string): string {
 }
 
 export function buildPrebuiltOpenCodeTemplateName(runtimeVersion: string): string {
-  return `e2b/opencode:${runtimeVersion}`
+  return `e2b/opencode:v${runtimeVersion}`
 }
 
 async function findManagedTemplateState(alias: string, logger?: PluginLogger): Promise<ManagedTemplateState> {
@@ -359,23 +504,45 @@ export function buildSystemdStartScript(projectPath: string, serverPort: number)
   ].join("\n")
 }
 
-export function buildManagedTemplateAlias(inputs: ManagedTemplateInputs): string {
-  const readableNodeVariant = normalizeAliasSegment(inputs.nodeVariant).slice(0, 24) || "node"
+export function buildManagedBaseTemplateAlias(inputs: ManagedBaseTemplateInputs): string {
+  const readableNodeVariant = normalizeAliasSegment(inputs.nodeVariant).slice(0, 18) || "node"
   const hash = createHash("sha256")
     .update(
       [
         inputs.nodeVariant,
         inputs.runtimeVersion,
-        inputs.projectPath,
-        String(inputs.serverPort),
         inputs.pluginPackageVersion,
-        MANAGED_TEMPLATE_IMPLEMENTATION_VERSION,
+        MANAGED_BASE_TEMPLATE_IMPLEMENTATION_VERSION,
       ].join("\0"),
     )
     .digest("hex")
     .slice(0, 12)
 
-  return `${MANAGED_TEMPLATE_PREFIX}${readableNodeVariant}-${hash}`
+  return `${MANAGED_TEMPLATE_PREFIX}base-${readableNodeVariant}-${hash}`
+}
+
+export function buildManagedWorkspaceTemplateAlias(inputs: ManagedWorkspaceTemplateInputs): string {
+  const readableNodeVariant = normalizeAliasSegment(inputs.nodeVariant).slice(0, 16) || "node"
+  const hash = createHash("sha256")
+    .update(
+      [
+        inputs.baseTemplate,
+        inputs.nodeVariant,
+        inputs.runtimeVersion,
+        inputs.projectPath,
+        String(inputs.serverPort),
+        inputs.pluginPackageVersion,
+        MANAGED_WORKSPACE_TEMPLATE_IMPLEMENTATION_VERSION,
+      ].join("\0"),
+    )
+    .digest("hex")
+    .slice(0, 12)
+
+  return `${MANAGED_TEMPLATE_PREFIX}workspace-${readableNodeVariant}-${hash}`
+}
+
+export function buildManagedTemplateAlias(inputs: ManagedWorkspaceTemplateInputs): string {
+  return buildManagedWorkspaceTemplateAlias(inputs)
 }
 
 function normalizeAliasSegment(value: string): string {

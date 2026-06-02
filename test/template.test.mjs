@@ -5,7 +5,9 @@ import { Template } from "e2b"
 
 import {
   BOOTSTRAP_READY_MARKER,
+  buildManagedBaseTemplateAlias,
   buildManagedTemplateAlias,
+  buildManagedWorkspaceTemplateAlias,
   buildOpenCodeInstallCommand,
   buildPrebuiltOpenCodeTemplateName,
   buildSystemdServiceInstallCommand,
@@ -14,19 +16,34 @@ import {
   buildSystemdUnitContent,
   ensureManagedWorkspaceTemplate,
   MANAGED_TEMPLATE_PREFIX,
+  resolveOpenCodeBaseTemplate,
   RUNTIME_ENV_FILE,
 } from "../dist/template.js"
 
 const baseInputs = {
   nodeVariant: "22-slim",
   runtimeVersion: "1.14.30",
+  baseTemplate: "e2b/opencode:v1.14.30",
   projectPath: "/home/user/project",
   serverPort: 4096,
   pluginPackageVersion: "0.1.0",
 }
 
+const baseTemplateInputs = {
+  nodeVariant: baseInputs.nodeVariant,
+  runtimeVersion: baseInputs.runtimeVersion,
+  pluginPackageVersion: baseInputs.pluginPackageVersion,
+}
+
 test("buildManagedTemplateAlias is stable for identical inputs", () => {
   assert.equal(buildManagedTemplateAlias(baseInputs), buildManagedTemplateAlias(baseInputs))
+})
+
+test("buildManagedBaseTemplateAlias is stable for identical inputs", () => {
+  assert.equal(
+    buildManagedBaseTemplateAlias(baseTemplateInputs),
+    buildManagedBaseTemplateAlias(baseTemplateInputs),
+  )
 })
 
 test("buildManagedTemplateAlias changes when identity inputs change", () => {
@@ -39,13 +56,22 @@ test("buildManagedTemplateAlias changes when identity inputs change", () => {
   assert.notEqual(changedAlias, baseAlias)
 })
 
-test("buildManagedTemplateAlias includes a normalized readable node segment", () => {
+test("buildManagedWorkspaceTemplateAlias includes a normalized readable node segment", () => {
   const alias = buildManagedTemplateAlias({
     ...baseInputs,
     nodeVariant: "Node 22 Slim!",
   })
 
-  assert.match(alias, new RegExp(`^${MANAGED_TEMPLATE_PREFIX}node-22-slim-[a-f0-9]{12}$`))
+  assert.match(alias, new RegExp(`^${MANAGED_TEMPLATE_PREFIX}workspace-node-22-slim-[a-f0-9]{12}$`))
+})
+
+test("buildManagedBaseTemplateAlias includes a normalized readable node segment", () => {
+  const alias = buildManagedBaseTemplateAlias({
+    ...baseTemplateInputs,
+    nodeVariant: "Node 22 Slim!",
+  })
+
+  assert.match(alias, new RegExp(`^${MANAGED_TEMPLATE_PREFIX}base-node-22-slim-[a-f0-9]{12}$`))
 })
 
 test("buildOpenCodeInstallCommand skips optional binary dependencies", () => {
@@ -53,7 +79,7 @@ test("buildOpenCodeInstallCommand skips optional binary dependencies", () => {
 })
 
 test("buildPrebuiltOpenCodeTemplateName targets the runtime-specific published template", () => {
-  assert.equal(buildPrebuiltOpenCodeTemplateName("1.14.39"), "e2b/opencode:1.14.39")
+  assert.equal(buildPrebuiltOpenCodeTemplateName("1.14.39"), "e2b/opencode:v1.14.39")
 })
 
 test("buildSystemdUnitContent points systemd at the opencode start script", () => {
@@ -96,6 +122,65 @@ test("buildSystemdStartCommand starts the service and streams opencode logs", ()
   assert.match(command, /tail -n \+1 -F \/tmp\/opencode-serve\.log/)
 })
 
+test("resolveOpenCodeBaseTemplate uses published opencode templates when present", async () => {
+  const originalGetTags = Template.getTags
+  const originalBuild = Template.build
+  const calls = []
+
+  Template.getTags = async (name) => {
+    calls.push(["getTags", name])
+    return name === "e2b/opencode:v1.14.30" ? [{ tag: "default" }] : []
+  }
+  Template.build = async () => {
+    throw new Error("published base should not build a managed base template")
+  }
+
+  try {
+    const template = await resolveOpenCodeBaseTemplate(baseTemplateInputs)
+
+    assert.equal(template, "e2b/opencode:v1.14.30")
+    assert.deepEqual(calls, [["getTags", "e2b/opencode:v1.14.30"]])
+  } finally {
+    Template.getTags = originalGetTags
+    Template.build = originalBuild
+  }
+})
+
+test("resolveOpenCodeBaseTemplate builds a managed base when published template is missing", async () => {
+  const originalGetTags = Template.getTags
+  const originalBuild = Template.build
+  const calls = []
+  const inputs = {
+    ...baseTemplateInputs,
+    runtimeVersion: "9.8.7",
+    pluginPackageVersion: "managed-base-test",
+  }
+  const alias = buildManagedBaseTemplateAlias(inputs)
+
+  Template.getTags = async (name) => {
+    calls.push(["getTags", name])
+    if (name === "e2b/opencode:v9.8.7") throw new Error("404: tag does not exist")
+    return []
+  }
+  Template.build = async (_template, name) => {
+    calls.push(["build", name])
+  }
+
+  try {
+    const template = await resolveOpenCodeBaseTemplate(inputs)
+
+    assert.equal(template, alias)
+    assert.deepEqual(calls, [
+      ["getTags", "e2b/opencode:v9.8.7"],
+      ["getTags", alias],
+      ["build", alias],
+    ])
+  } finally {
+    Template.getTags = originalGetTags
+    Template.build = originalBuild
+  }
+})
+
 test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
   const originalGetTags = Template.getTags
   const originalBuild = Template.build
@@ -116,7 +201,7 @@ test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
 
   try {
     const template = await ensureManagedWorkspaceTemplate(inputs)
-    const alias = buildManagedTemplateAlias(inputs)
+    const alias = buildManagedWorkspaceTemplateAlias(inputs)
 
     assert.equal(template, alias)
     assert.deepEqual(calls, [

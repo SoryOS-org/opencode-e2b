@@ -44,7 +44,9 @@ The plugin is loaded by OpenCode's Bun runtime and uses Bun as its development r
 
 ## Runtime Behavior
 
-The plugin first attempts to create a sandbox from the published E2B template `e2b/opencode:<runtimeVersion>`, where `<runtimeVersion>` is the local OpenCode runtime version. If that sandbox create fails for a non-auth, non-rate-limit error, the plugin falls back to creating E2B sandboxes from managed templates. A managed template is keyed by the Node image variant, the local OpenCode runtime version, project path, server port, and this plugin's package version.
+The plugin builds sandboxes from a local workspace wrapper template. That wrapper is layered on top of the published E2B template `e2b/opencode:v<runtimeVersion>` when it exists. If the published runtime template is missing, the plugin first builds a managed base template from the configured Node image and installs the pinned OpenCode runtime there, then builds the same workspace wrapper on top of that base.
+
+Managed base and workspace templates use the `opencode-e2b-` alias prefix. Base templates are keyed by Node image, OpenCode runtime version, and plugin package version. Workspace wrapper templates are keyed by the selected base template, project path, server port, and plugin package version.
 
 On workspace create, the plugin:
 
@@ -52,7 +54,7 @@ On workspace create, the plugin:
 - uploads the local project snapshot into the sandbox;
 - ensures the uploaded project has a git repository and writes `.git/opencode`;
 - writes per-workspace OpenCode env values to `/tmp/.opencode-e2b.env`;
-- releases the managed template's marker-gated systemd `opencode serve` service;
+- releases the managed workspace template's marker-gated systemd `opencode serve` service;
 - waits for `/global/health` before returning the remote workspace target.
 
 OpenCode persists `configure()` before `create()`, so the plugin does not store E2B sandbox IDs in the OpenCode workspace row. Instead it writes workspace metadata to E2B and later finds sandboxes with `Sandbox.list`.
@@ -80,7 +82,7 @@ Common options:
 - `upload.followSymlinks`: follow symlinks during upload. Default: `false`.
 - `templateGc`: best-effort cleanup for old managed templates.
 
-`bootstrap.prepareCommands` still runs after upload and before the remote OpenCode server starts. `bootstrap.installCommand` and `bootstrap.startCommand` are accepted for older configs but ignored; the managed template installs the pinned OpenCode runtime and owns startup through a marker-gated systemd service.
+`bootstrap.prepareCommands` still runs after upload and before the remote OpenCode server starts. `bootstrap.installCommand` and `bootstrap.startCommand` are accepted for older configs but ignored; the selected base template provides the pinned OpenCode runtime and the local workspace wrapper owns startup through a marker-gated systemd service.
 
 ## Template Cleanup
 

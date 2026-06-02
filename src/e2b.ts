@@ -1,18 +1,11 @@
 import type { WorkspaceInfo } from "@opencode-ai/plugin"
-import {
-  AuthenticationError,
-  RateLimitError,
-  Sandbox,
-  SandboxNotFoundError,
-  type SandboxOpts,
-  type SandboxState,
-} from "e2b"
+import { Sandbox, SandboxNotFoundError, type SandboxOpts, type SandboxState } from "e2b"
 
 import { createE2BConnectionOptions } from "./e2b-sdk.js"
 import { forgetSandboxCompatibility } from "./runtime.js"
 import type { CachedSandboxInput, SandboxStore } from "./sandbox-store.js"
 import { errorMessage } from "./shared.js"
-import { buildPrebuiltOpenCodeTemplateName, ensureManagedWorkspaceTemplate } from "./template.js"
+import { ensureManagedWorkspaceTemplate, resolveOpenCodeBaseTemplate } from "./template.js"
 import type {
   NormalizedE2BWorkspaceConfig,
   PersistedWorkspaceCompatibility,
@@ -67,28 +60,18 @@ export async function createWorkspaceSandbox(
   logger?: PluginLogger,
 ): Promise<Sandbox> {
   const sandboxOptions = buildSandboxCreateOptions(info, config, compatibility, logger)
-  const prebuiltTemplate = buildPrebuiltOpenCodeTemplateName(runtimeVersion)
-
-  try {
-    await logger?.info("prebuilt sandbox create start", {
-      template: prebuiltTemplate,
+  const baseTemplate = await resolveOpenCodeBaseTemplate(
+    {
+      nodeVariant: config.nodeVariant,
       runtimeVersion,
-    })
-    return await Sandbox.create(prebuiltTemplate, sandboxOptions)
-  } catch (error) {
-    if (!shouldFallbackFromPrebuiltSandboxError(error)) {
-      throw error
-    }
-
-    await logger?.warn("prebuilt sandbox create failed; falling back to managed template", {
-      template: prebuiltTemplate,
-      runtimeVersion,
-      error: errorMessage(error),
-    })
-  }
+      pluginPackageVersion,
+    },
+    logger,
+  )
 
   const managedTemplate = await ensureManagedWorkspaceTemplate(
     {
+      baseTemplate,
       nodeVariant: config.nodeVariant,
       runtimeVersion,
       projectPath: config.projectPath,
@@ -119,10 +102,6 @@ function buildSandboxCreateOptions(
       maskRequestHost: config.network.maskRequestHost || undefined,
     },
   }
-}
-
-function shouldFallbackFromPrebuiltSandboxError(error: unknown): boolean {
-  return !(error instanceof AuthenticationError) && !(error instanceof RateLimitError)
 }
 
 export async function findWorkspaceSandboxRecord(

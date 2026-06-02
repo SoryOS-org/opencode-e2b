@@ -12,7 +12,7 @@ import {
   sandboxBaseUrl,
   sandboxTargetHeaders,
 } from "../dist/e2b.js"
-import { buildManagedTemplateAlias } from "../dist/template.js"
+import { buildManagedBaseTemplateAlias, buildManagedWorkspaceTemplateAlias } from "../dist/template.js"
 
 const workspaceInfo = {
   id: "workspace-id",
@@ -73,55 +73,87 @@ test("readSandboxCompatibility treats invalid flags as unknown", () => {
   assert.deepEqual(readSandboxCompatibility({ opencodeFlags: JSON.stringify([1]) }).flags, [])
 })
 
-test("createWorkspaceSandbox creates from versioned published template first", async () => {
+test("createWorkspaceSandbox wraps versioned published templates", async () => {
   const originalCreate = Sandbox.create
+  const originalGetTags = Template.getTags
+  const originalBuild = Template.build
   const calls = []
+  const runtimeVersion = "1.14.39"
+  const pluginPackageVersion = "prebuilt-create-test"
+  const config = normalizeOptions()
+  const alias = buildManagedWorkspaceTemplateAlias({
+    baseTemplate: "e2b/opencode:v1.14.39",
+    nodeVariant: config.nodeVariant,
+    runtimeVersion,
+    projectPath: config.projectPath,
+    serverPort: config.serverPort,
+    pluginPackageVersion,
+  })
 
   Sandbox.create = async (template, options) => {
-    calls.push([template, options.metadata.opencodeWorkspaceId])
-    return { sandboxId: "prebuilt-sandbox" }
+    calls.push(["create", template, options.metadata.opencodeWorkspaceId])
+    return { sandboxId: "workspace-sandbox" }
+  }
+  Template.getTags = async (name) => {
+    calls.push(["getTags", name])
+    return name === "e2b/opencode:v1.14.39" ? [{ tag: "default" }] : []
+  }
+  Template.build = async (_template, name) => {
+    calls.push(["build", name])
   }
 
   try {
     const sandbox = await createWorkspaceSandbox(
       workspaceInfo,
-      normalizeOptions(),
+      config,
       compatibility,
-      "1.14.39",
-      "prebuilt-create-test",
+      runtimeVersion,
+      pluginPackageVersion,
     )
 
-    assert.equal(sandbox.sandboxId, "prebuilt-sandbox")
-    assert.deepEqual(calls, [["e2b/opencode:1.14.39", "workspace-id"]])
+    assert.equal(sandbox.sandboxId, "workspace-sandbox")
+    assert.deepEqual(calls, [
+      ["getTags", "e2b/opencode:v1.14.39"],
+      ["getTags", alias],
+      ["build", alias],
+      ["create", alias, "workspace-id"],
+    ])
   } finally {
     Sandbox.create = originalCreate
+    Template.getTags = originalGetTags
+    Template.build = originalBuild
   }
 })
 
-test("createWorkspaceSandbox falls back to managed template when published create fails", async () => {
+test("createWorkspaceSandbox builds a managed base when published template is missing", async () => {
   const originalCreate = Sandbox.create
   const originalGetTags = Template.getTags
   const originalBuild = Template.build
   const calls = []
   const runtimeVersion = "1.14.38"
   const pluginPackageVersion = "managed-fallback-test"
-  const alias = buildManagedTemplateAlias({
-    nodeVariant: normalizeOptions().nodeVariant,
+  const config = normalizeOptions()
+  const baseAlias = buildManagedBaseTemplateAlias({
+    nodeVariant: config.nodeVariant,
     runtimeVersion,
-    projectPath: normalizeOptions().projectPath,
-    serverPort: normalizeOptions().serverPort,
+    pluginPackageVersion,
+  })
+  const wrapperAlias = buildManagedWorkspaceTemplateAlias({
+    baseTemplate: baseAlias,
+    nodeVariant: config.nodeVariant,
+    runtimeVersion,
+    projectPath: config.projectPath,
+    serverPort: config.serverPort,
     pluginPackageVersion,
   })
 
   Sandbox.create = async (template) => {
     calls.push(["create", template])
-    if (calls.length === 1) {
-      throw new Error("404: tag does not exist")
-    }
     return { sandboxId: "managed-sandbox" }
   }
   Template.getTags = async (name) => {
     calls.push(["getTags", name])
+    if (name === "e2b/opencode:v1.14.38") throw new Error("404: tag does not exist")
     return []
   }
   Template.build = async (_template, name) => {
@@ -131,7 +163,7 @@ test("createWorkspaceSandbox falls back to managed template when published creat
   try {
     const sandbox = await createWorkspaceSandbox(
       workspaceInfo,
-      normalizeOptions(),
+      config,
       compatibility,
       runtimeVersion,
       pluginPackageVersion,
@@ -139,10 +171,12 @@ test("createWorkspaceSandbox falls back to managed template when published creat
 
     assert.equal(sandbox.sandboxId, "managed-sandbox")
     assert.deepEqual(calls, [
-      ["create", "e2b/opencode:1.14.38"],
-      ["getTags", alias],
-      ["build", alias],
-      ["create", alias],
+      ["getTags", "e2b/opencode:v1.14.38"],
+      ["getTags", baseAlias],
+      ["build", baseAlias],
+      ["getTags", wrapperAlias],
+      ["build", wrapperAlias],
+      ["create", wrapperAlias],
     ])
   } finally {
     Sandbox.create = originalCreate
@@ -151,15 +185,15 @@ test("createWorkspaceSandbox falls back to managed template when published creat
   }
 })
 
-test("createWorkspaceSandbox does not fall back on prebuilt rate limits", async () => {
-  const originalCreate = Sandbox.create
+test("createWorkspaceSandbox does not fall back on published template rate limits", async () => {
+  const originalGetTags = Template.getTags
   const originalBuild = Template.build
 
-  Sandbox.create = async () => {
+  Template.getTags = async () => {
     throw new RateLimitError("limited")
   }
   Template.build = async () => {
-    throw new Error("managed template build should not run")
+    throw new Error("templates should not build after a rate limit")
   }
 
   try {
@@ -168,7 +202,7 @@ test("createWorkspaceSandbox does not fall back on prebuilt rate limits", async 
       RateLimitError,
     )
   } finally {
-    Sandbox.create = originalCreate
+    Template.getTags = originalGetTags
     Template.build = originalBuild
   }
 })

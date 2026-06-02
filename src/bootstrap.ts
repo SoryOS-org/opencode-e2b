@@ -8,10 +8,6 @@ import { sandboxBaseUrl, sandboxTargetHeaders } from "./e2b.js"
 import { shellSingleQuote } from "./shared.js"
 import { BOOTSTRAP_READY_MARKER, RUNTIME_ENV_FILE } from "./template.js"
 
-/**
- * Absolute path inside the sandbox where the baked template's start command
- * redirects OpenCode output. Must stay in sync with template.ts.
- */
 const START_COMMAND_LOG_PATH = "/tmp/opencode-serve.log"
 
 /**
@@ -86,7 +82,7 @@ async function writeRuntimeEnvFile(
 export function renderRuntimeEnvFile(env: Record<string, string | undefined>): string {
   const entries = Object.entries(filterRuntimeEnv(env))
   const lines = [
-    "# Written by opencode-e2b bootstrap; sourced by the managed template start command.",
+    "# Written by opencode-e2b bootstrap; sourced by the managed template systemd service.",
     "# Do not edit: regenerated on every workspace create.",
     ...entries.map(([key, value]) => `export ${key}=${shellSingleQuote(value)}`),
     "",

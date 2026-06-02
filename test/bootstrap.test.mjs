@@ -17,7 +17,7 @@ test("renderRuntimeEnvFile exports defined values and skips undefined entries", 
       OPTIONAL: undefined,
     }),
     [
-      "# Written by opencode-e2b bootstrap; sourced by the managed template start command.",
+      "# Written by opencode-e2b bootstrap; sourced by the managed template systemd service.",
       "# Do not edit: regenerated on every workspace create.",
       "export OPENCODE_WORKSPACE_ID='workspace-123'",
       "",

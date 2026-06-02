@@ -297,8 +297,25 @@ export async function removeWorkspaceSandbox(
   store?: SandboxStore,
 ): Promise<void> {
   const removedCached = await removeCachedWorkspaceSandbox(info, config, logger, store)
-  if (removedCached === "removed") return
+  if (removedCached === "removed") {
+    void removeListedWorkspaceSandboxes(info, config, logger, store).catch(async (error: unknown) => {
+      await logger?.warn("best-effort duplicate sandbox cleanup failed", {
+        workspaceID: info.id,
+        error: errorMessage(error),
+      })
+    })
+    return
+  }
 
+  await removeListedWorkspaceSandboxes(info, config, logger, store)
+}
+
+async function removeListedWorkspaceSandboxes(
+  info: WorkspaceInfo,
+  config: NormalizedE2BWorkspaceConfig,
+  logger: PluginLogger | undefined,
+  store: SandboxStore | undefined,
+): Promise<void> {
   const matches = await listWorkspaceSandboxMatches(info, logger)
   if (matches.length === 0) return
 

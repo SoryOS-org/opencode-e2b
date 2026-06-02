@@ -403,6 +403,48 @@ test("removeWorkspaceSandbox ignores listed sandboxes that are already gone", as
   }
 })
 
+test("removeWorkspaceSandbox sweeps duplicate listed sandboxes after cached removal", async () => {
+  const originalConnect = Sandbox.connect
+  const originalList = Sandbox.list
+  const killed = []
+  let resolveDuplicateKilled
+  const duplicateKilled = new Promise((resolve) => {
+    resolveDuplicateKilled = resolve
+  })
+  const store = createMemoryStore({
+    workspaceID: workspaceInfo.id,
+    sandboxID: "cached-sandbox",
+    metadata: { opencodeWorkspaceId: workspaceInfo.id },
+    status: "ready",
+  })
+
+  Sandbox.connect = async (sandboxId) => ({
+    sandboxId,
+    async kill() {
+      killed.push(sandboxId)
+      if (sandboxId === "duplicate-sandbox") resolveDuplicateKilled()
+    },
+  })
+  Sandbox.list = () =>
+    createPaginator([
+      [
+        {
+          sandboxId: "duplicate-sandbox",
+          metadata: { opencodeWorkspaceId: workspaceInfo.id },
+        },
+      ],
+    ])
+
+  try {
+    await removeWorkspaceSandbox(workspaceInfo, normalizeOptions(), undefined, store)
+    await duplicateKilled
+    assert.deepEqual(killed, ["cached-sandbox", "duplicate-sandbox"])
+  } finally {
+    Sandbox.connect = originalConnect
+    Sandbox.list = originalList
+  }
+})
+
 test("removeWorkspaceSandbox rethrows cached sandbox kill errors", async () => {
   const originalConnect = Sandbox.connect
   const originalList = Sandbox.list

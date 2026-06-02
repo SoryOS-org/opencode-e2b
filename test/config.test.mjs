@@ -36,6 +36,8 @@ test("validatePluginOptions reports all invalid fields in one pass", () => {
     () =>
       validatePluginOptions({
         nodeVariant: "",
+        projectPath: "relative/project",
+        serverPort: 70000,
         secure: "yes",
         network: {
           allowOut: "0.0.0.0/0",
@@ -46,12 +48,19 @@ test("validatePluginOptions reports all invalid fields in one pass", () => {
       }),
     (error) => {
       assert.match(error.message, /nodeVariant must be a non-empty string/)
+      assert.match(error.message, /projectPath must be an absolute POSIX path/)
+      assert.match(error.message, /serverPort must be between 1 and 65535/)
       assert.match(error.message, /secure must be a boolean/)
       assert.match(error.message, /network.allowOut must be an array of strings/)
       assert.match(error.message, /upload.batchSize must be a positive integer/)
       return true
     },
   )
+})
+
+test("normalizeOptions validates path and port ranges", () => {
+  assert.throws(() => normalizeOptions({ projectPath: "relative/project" }), /absolute POSIX path/)
+  assert.throws(() => normalizeOptions({ serverPort: 70000 }), /between 1 and 65535/)
 })
 
 test("resolveWorkspaceConfig keeps persisted workspace identity stable", () => {

@@ -10,9 +10,9 @@ export function validatePluginOptions(raw: unknown): E2BWorkspacePluginOptions |
   const errors: string[] = []
 
   requireNonEmptyString(options.nodeVariant, "nodeVariant", errors)
-  requireNonEmptyString(options.projectPath, "projectPath", errors)
+  requireAbsoluteProjectPath(options.projectPath, "projectPath", errors)
   requirePositiveInteger(options.sandboxTimeoutMs, "sandboxTimeoutMs", errors)
-  requirePositiveInteger(options.serverPort, "serverPort", errors)
+  requireTcpPort(options.serverPort, "serverPort", errors)
   requireBoolean(options.secure, "secure", errors)
   requireStringRecord(options.metadata, "metadata", errors)
 
@@ -95,6 +95,32 @@ function requirePositiveInteger(value: unknown, fieldName: string, errors: strin
   if (value === undefined) return
   if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
     errors.push(`${fieldName} must be a positive integer`)
+  }
+}
+
+function requireTcpPort(value: unknown, fieldName: string, errors: string[]): void {
+  if (value === undefined) return
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    errors.push(`${fieldName} must be a positive integer`)
+    return
+  }
+  if (value > 65535) {
+    errors.push(`${fieldName} must be between 1 and 65535`)
+  }
+}
+
+function requireAbsoluteProjectPath(value: unknown, fieldName: string, errors: string[]): void {
+  if (value === undefined) return
+  if (typeof value !== "string") {
+    errors.push(`${fieldName} must be a string`)
+    return
+  }
+  if (value.trim() === "") {
+    errors.push(`${fieldName} must be a non-empty string`)
+    return
+  }
+  if (!value.startsWith("/")) {
+    errors.push(`${fieldName} must be an absolute POSIX path`)
   }
 }
 

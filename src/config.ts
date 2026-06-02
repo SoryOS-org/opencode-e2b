@@ -28,7 +28,7 @@ const DEFAULT_IGNORE = [
 export function normalizeOptions(options?: E2BWorkspacePluginOptions): NormalizedE2BWorkspaceConfig {
   const sandboxTimeoutMs =
     requirePositiveInteger(options?.sandboxTimeoutMs, "sandboxTimeoutMs") ?? 60 * 60 * 1000
-  const serverPort = requirePositiveInteger(options?.serverPort, "serverPort") ?? 4096
+  const serverPort = requireTcpPort(options?.serverPort, "serverPort") ?? 4096
   const waitForTimeoutMs =
     requirePositiveInteger(options?.bootstrap?.waitForTimeoutMs, "bootstrap.waitForTimeoutMs") ?? 30_000
   const batchSize = requirePositiveInteger(options?.upload?.batchSize, "upload.batchSize") ?? 100
@@ -44,7 +44,7 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
     workspaceApiVersion: CURRENT_WORKSPACE_API_VERSION,
     nodeVariant: options?.nodeVariant ?? DEFAULT_NODE_VARIANT,
     sandboxTimeoutMs,
-    projectPath: options?.projectPath ?? "/home/user/project",
+    projectPath: requireAbsoluteProjectPath(options?.projectPath, "projectPath") ?? "/home/user/project",
     serverPort,
     secure: options?.secure ?? true,
     network: {
@@ -214,4 +214,24 @@ function requirePositiveInteger(value: number | undefined, fieldName: string): n
   }
 
   throw new Error(`Expected ${fieldName} to be a positive integer`)
+}
+
+function requireTcpPort(value: number | undefined, fieldName: string): number | undefined {
+  const port = requirePositiveInteger(value, fieldName)
+  if (port === undefined) return undefined
+  if (port > 65535) {
+    throw new Error(`Expected ${fieldName} to be between 1 and 65535`)
+  }
+  return port
+}
+
+function requireAbsoluteProjectPath(value: string | undefined, fieldName: string): string | undefined {
+  if (value === undefined) return undefined
+  if (value.trim() === "") {
+    throw new Error(`Expected ${fieldName} to be a non-empty string`)
+  }
+  if (!value.startsWith("/")) {
+    throw new Error(`Expected ${fieldName} to be an absolute POSIX path`)
+  }
+  return value
 }

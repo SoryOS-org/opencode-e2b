@@ -40,6 +40,7 @@ const managedTemplatePromises = new Map<string, Promise<string>>()
 const MANAGED_TEMPLATE_READY_TIMEOUT_MS = 30 * 60 * 1000
 const MANAGED_TEMPLATE_READY_POLL_MS = 5 * 1000
 const MANAGED_TEMPLATE_READY_MAX_POLL_MS = 30 * 1000
+const RUNTIME_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
 
 type ManagedTemplateState =
   | { kind: "missing" }
@@ -279,7 +280,10 @@ async function buildManagedWorkspaceTemplate(
 }
 
 export function buildOpenCodeInstallCommand(runtimeVersion: string): string {
-  return `npm install -g --omit=optional opencode-ai@${runtimeVersion}`
+  if (!RUNTIME_VERSION_PATTERN.test(runtimeVersion)) {
+    throw new Error("OpenCode runtime version must be a valid SemVer string")
+  }
+  return `npm install -g --omit=optional ${shellSingleQuote(`opencode-ai@${runtimeVersion}`)}`
 }
 
 export function buildPrebuiltOpenCodeTemplateName(runtimeVersion: string): string {

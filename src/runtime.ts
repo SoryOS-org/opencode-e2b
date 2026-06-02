@@ -187,15 +187,12 @@ export async function assertWorkspaceCompatibility(params: {
 }
 
 function parseSemver(version: string): { major: number; minor: number; patch: number } {
-  const match = /^(\d+)\.(\d+)\.(\d+)(.*)$/.exec(version)
+  const match = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.exec(version)
   if (!match) {
-    throw new Error("version must begin with numeric MAJOR.MINOR.PATCH")
+    throw new Error("version must be a valid SemVer string with numeric MAJOR.MINOR.PATCH")
   }
 
-  const [, major, minor, patch, suffix] = match
-  if (suffix.length > 0 && !suffix.startsWith("-") && !suffix.startsWith("+")) {
-    throw new Error("version must begin with numeric MAJOR.MINOR.PATCH")
-  }
+  const [, major, minor, patch] = match
 
   return {
     major: Number(major),

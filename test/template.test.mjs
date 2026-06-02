@@ -74,7 +74,11 @@ test("buildManagedBaseTemplateAlias includes a normalized readable node segment"
 })
 
 test("buildOpenCodeInstallCommand skips optional binary dependencies", () => {
-  assert.equal(buildOpenCodeInstallCommand("1.14.39"), "npm install -g --omit=optional opencode-ai@1.14.39")
+  assert.equal(buildOpenCodeInstallCommand("1.14.39"), "npm install -g --omit=optional 'opencode-ai@1.14.39'")
+})
+
+test("buildOpenCodeInstallCommand rejects unsafe runtime versions", () => {
+  assert.throws(() => buildOpenCodeInstallCommand("1.14.39; touch /tmp/pwned"), /valid SemVer/)
 })
 
 test("buildPrebuiltOpenCodeTemplateName targets the runtime-specific published template", () => {

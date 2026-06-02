@@ -30,6 +30,7 @@ test("meetsRuntimeFloor rejects non-semver prefixes", () => {
   assert.throws(() => meetsRuntimeFloor("v1.14.20", "1.14.20"), /numeric MAJOR\.MINOR\.PATCH/)
   assert.throws(() => meetsRuntimeFloor("1.14", "1.14.20"), /numeric MAJOR\.MINOR\.PATCH/)
   assert.throws(() => meetsRuntimeFloor("1.14.20dev", "1.14.20"), /numeric MAJOR\.MINOR\.PATCH/)
+  assert.throws(() => meetsRuntimeFloor("1.14.20; touch /tmp/pwned", "1.14.20"), /valid SemVer/)
 })
 
 test("resolveLocalRuntimeVersion uses the injected OpenCode client transport", async () => {

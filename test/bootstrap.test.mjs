@@ -81,6 +81,7 @@ test("bootstrapWorkspace releases the systemd opencode service with a marker", a
   }
 
   const sandbox = {
+    trafficAccessToken: "token",
     getHost(port) {
       return `sandbox-host-${port}.example.com`
     },
@@ -189,6 +190,7 @@ test("waitForSyncReady fails when sync endpoints never become reachable", async 
 
 function createSandbox() {
   return {
+    trafficAccessToken: "token",
     getHost(port) {
       return `sandbox-host-${port}.example.com`
     },

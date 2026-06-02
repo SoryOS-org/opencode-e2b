@@ -283,7 +283,9 @@ export function sandboxTargetHeaders(
   config: NormalizedE2BWorkspaceConfig,
 ): Record<string, string> | undefined {
   if (!config.secure) return undefined
-  if (!sandbox.trafficAccessToken) return undefined
+  if (!sandbox.trafficAccessToken) {
+    throw new Error("Secure E2B sandbox traffic is enabled, but the sandbox did not provide an access token")
+  }
   return { "X-Access-Token": sandbox.trafficAccessToken }
 }
 

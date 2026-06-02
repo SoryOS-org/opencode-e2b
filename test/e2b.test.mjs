@@ -46,7 +46,7 @@ test("sandboxTargetHeaders returns secure access headers only when needed", () =
     "X-Access-Token": "token",
   })
   assert.equal(sandboxTargetHeaders({ trafficAccessToken: "token" }, publicConfig), undefined)
-  assert.equal(sandboxTargetHeaders({}, secureConfig), undefined)
+  assert.throws(() => sandboxTargetHeaders({}, secureConfig), /did not provide an access token/)
 })
 
 test("readSandboxCompatibility parses valid metadata flags", () => {

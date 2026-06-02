@@ -46,7 +46,7 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
     sandboxTimeoutMs,
     projectPath: options?.projectPath ?? "/home/user/project",
     serverPort,
-    secure: options?.secure ?? false,
+    secure: options?.secure ?? true,
     network: {
       allowPublicTraffic: options?.network?.allowPublicTraffic ?? true,
       allowOut: options?.network?.allowOut ?? [],

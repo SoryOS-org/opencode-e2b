@@ -16,7 +16,7 @@ test("normalizeOptions applies stable defaults", () => {
   assert.equal(config.sandboxTimeoutMs, 60 * 60 * 1000)
   assert.equal(config.projectPath, "/home/user/project")
   assert.equal(config.serverPort, 4096)
-  assert.equal(config.secure, false)
+  assert.equal(config.secure, true)
   assert.equal(config.network.allowPublicTraffic, true)
   assert.deepEqual(config.upload.ignore, [
     ".git",

@@ -2,7 +2,6 @@ import type { Plugin, PluginInput } from "@opencode-ai/plugin"
 
 import { normalizeOptions, validatePluginOptions, warnDeprecatedBootstrapOptions } from "./config.js"
 import { runTemplateGC } from "./gc.js"
-import { toPublishedWorkspaceAdapter } from "./opencode-compat.js"
 import { createSandboxStore } from "./sandbox-store.js"
 import { errorMessage } from "./shared.js"
 import type { E2BWorkspacePluginOptions, PluginLogger } from "./types.js"
@@ -44,7 +43,7 @@ export const E2BWorkspacePlugin: Plugin = async (
     sandboxStore,
   })
 
-  experimental_workspace.register("e2b", toPublishedWorkspaceAdapter(adapter))
+  experimental_workspace.register("e2b", adapter)
 
   if (gcConfig.enabled) {
     void runTemplateGC(gcConfig, logger).catch(() => {})

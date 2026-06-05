@@ -1,4 +1,4 @@
-import type { PluginOptions, WorkspaceInfo } from "@opencode-ai/plugin"
+import type { PluginOptions, WorkspaceAdapter } from "@opencode-ai/plugin"
 
 export type E2BNetworkOptions = {
   allowPublicTraffic?: boolean
@@ -83,14 +83,7 @@ export type PersistedWorkspaceExtra = {
   }
 }
 
-export type RuntimeWorkspaceAdapter = {
-  name: string
-  description: string
-  configure(info: WorkspaceInfo): WorkspaceInfo | Promise<WorkspaceInfo>
-  create(info: WorkspaceInfo, env: Record<string, string | undefined>, from?: WorkspaceInfo): Promise<void>
-  remove(info: WorkspaceInfo): Promise<void>
-  target(info: WorkspaceInfo): Promise<{ type: "remote"; url: string | URL; headers?: HeadersInit }>
-}
+export type RuntimeWorkspaceAdapter = WorkspaceAdapter
 
 export type PluginLogger = {
   debug(message: string, extra?: Record<string, unknown>): Promise<void>

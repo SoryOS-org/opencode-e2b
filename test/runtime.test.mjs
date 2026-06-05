@@ -44,7 +44,7 @@ test("resolveLocalRuntimeVersion uses the injected OpenCode client transport", a
         return {
           data: {
             healthy: true,
-            version: "1.14.39",
+            version: "1.16.0",
           },
         }
       },
@@ -53,7 +53,7 @@ test("resolveLocalRuntimeVersion uses the injected OpenCode client transport", a
 
   const version = await resolveLocalRuntimeVersion(new URL("http://127.0.0.1:1"), undefined, client)
 
-  assert.equal(version, "1.14.39")
+  assert.equal(version, "1.16.0")
   assert.equal(requested.url, "/global/health")
   assert.ok(requested.signal instanceof AbortSignal)
 })

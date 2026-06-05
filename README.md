@@ -61,7 +61,8 @@ OpenCode persists `configure()` before `create()`, so the plugin does not store 
 
 ## Compatibility
 
-- Minimum supported OpenCode runtime: `1.14.32`.
+- Minimum supported OpenCode runtime: `1.16.0`.
+- The plugin targets `@opencode-ai/plugin` `1.16.0` and registers the current `WorkspaceAdapter` shape directly.
 - Minimum supported Bun runtime: `1.3.0`; the exact Bun version is intentionally left to OpenCode.
 - The local runtime version is probed from `PluginInput.serverUrl`.
 - The remote runtime version is probed from the sandbox `/global/health` endpoint.

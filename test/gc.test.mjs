@@ -2,10 +2,45 @@ import assert from "node:assert/strict"
 import { test } from "bun:test"
 
 import { MANAGED_TEMPLATE_PREFIX } from "../dist/template.js"
-import { selectStaleManagedTemplates } from "../dist/gc.js"
+import { runTemplateGC, selectStaleManagedTemplates } from "../dist/gc.js"
 
 const now = Date.parse("2026-05-01T12:00:00.000Z")
 const ttlMs = 60 * 60 * 1000
+
+test("runTemplateGC skips when E2B_API_KEY is missing", async () => {
+  const originalApiKey = process.env.E2B_API_KEY
+  const calls = []
+  const logger = {
+    debug: (message) => calls.push(["debug", message]),
+    info: (message) => calls.push(["info", message]),
+    warn: (message) => calls.push(["warn", message]),
+    error: (message) => calls.push(["error", message]),
+  }
+
+  delete process.env.E2B_API_KEY
+
+  try {
+    await runTemplateGC(
+      {
+        enabled: true,
+        ttlMs,
+        cooldownMs: 0,
+      },
+      logger,
+    )
+
+    assert.deepEqual(calls, [
+      ["info", "template gc start"],
+      ["debug", "template gc skipped; E2B_API_KEY is not set"],
+    ])
+  } finally {
+    if (originalApiKey === undefined) {
+      delete process.env.E2B_API_KEY
+    } else {
+      process.env.E2B_API_KEY = originalApiKey
+    }
+  }
+})
 
 test("selectStaleManagedTemplates returns ready managed templates older than ttl", () => {
   const stale = selectStaleManagedTemplates(

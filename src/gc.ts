@@ -66,6 +66,11 @@ async function performGC(config: ResolvedGCConfig, logger?: PluginLogger): Promi
     cooldownMs: config.cooldownMs,
   })
 
+  if (!hasE2BApiKey()) {
+    await logger?.debug("template gc skipped; E2B_API_KEY is not set")
+    return
+  }
+
   const client = createE2BApiClient(logger)
   const templates = await listTemplates(client, logger)
   const managedTemplates = templates.filter(isManagedTemplate)
@@ -154,6 +159,10 @@ function parseTimestamp(value: string | null | undefined): number {
 
   const parsed = Date.parse(value)
   return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function hasE2BApiKey(env: NodeJS.ProcessEnv = process.env): boolean {
+  return Boolean(env.E2B_API_KEY?.trim())
 }
 
 async function deleteTemplate(

@@ -90,11 +90,13 @@ export function isE2BNotFoundError(error: unknown): boolean {
 function createE2BSDKLogger(logger?: PluginLogger): E2BLogger | undefined {
   if (!logger) return undefined
 
+  // SDK calls that fail are logged again with workspace context by callers.
+  // Keep raw SDK chatter one level quieter to avoid duplicate prominent logs.
   return {
     debug: (...args: unknown[]) => writeLog(logger, "debug", args),
-    info: (...args: unknown[]) => writeLog(logger, "info", args),
-    warn: (...args: unknown[]) => writeLog(logger, "warn", args),
-    error: (...args: unknown[]) => writeLog(logger, "error", args),
+    info: (...args: unknown[]) => writeLog(logger, "debug", args),
+    warn: (...args: unknown[]) => writeLog(logger, "info", args),
+    error: (...args: unknown[]) => writeLog(logger, "warn", args),
   }
 }
 

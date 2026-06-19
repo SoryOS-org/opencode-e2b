@@ -14,6 +14,7 @@ import {
   sandboxBaseUrl,
   sandboxTargetHeaders,
 } from "../dist/e2b.js"
+import { createE2BConnectionOptions } from "../dist/e2b-sdk.js"
 import { buildManagedBaseTemplateAlias, buildManagedWorkspaceTemplateAlias } from "../dist/template.js"
 
 const workspaceInfo = {
@@ -79,6 +80,29 @@ test("readSandboxCompatibility treats invalid flags as unknown", () => {
     flags: [],
   })
   assert.deepEqual(readSandboxCompatibility({ opencodeFlags: JSON.stringify([1]) }).flags, [])
+})
+
+test("createE2BConnectionOptions maps SDK logs below plugin lifecycle logs", () => {
+  const calls = []
+  const logger = {
+    debug: (message) => calls.push(["debug", message]),
+    info: (message) => calls.push(["info", message]),
+    warn: (message) => calls.push(["warn", message]),
+    error: (message) => calls.push(["error", message]),
+  }
+  const sdkLogger = createE2BConnectionOptions(logger).logger
+
+  sdkLogger.debug("debug", { detail: true })
+  sdkLogger.info("info")
+  sdkLogger.warn("warn")
+  sdkLogger.error(new Error("error"))
+
+  assert.deepEqual(calls, [
+    ["debug", 'debug {"detail":true}'],
+    ["debug", "info"],
+    ["info", "warn"],
+    ["warn", "error"],
+  ])
 })
 
 test("claimProvisioningSandbox creates a durable provisioning claim", async () => {

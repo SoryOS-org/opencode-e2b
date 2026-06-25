@@ -18,6 +18,9 @@ import {
   MANAGED_TEMPLATE_PREFIX,
   RUNTIME_ENV_FILE,
 } from "../dist/template.js"
+import { clearApiFetchHandler, installApiFetchShim, setApiFetchHandler } from "./helpers/api-fetch-mock.mjs"
+
+installApiFetchShim()
 
 const baseInputs = {
   nodeVariant: "22-slim",
@@ -127,7 +130,6 @@ test("buildSystemdStartCommand starts the service and streams opencode logs", ()
 
 test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
   const originalApiKey = process.env.E2B_API_KEY
-  const originalFetch = globalThis.fetch
   const originalGetTags = Template.getTags
   const originalBuild = Template.build
   const calls = []
@@ -137,15 +139,15 @@ test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
     pluginPackageVersion: "fallback-test",
   }
 
-  process.env.E2B_API_KEY = "e2b_test"
+  process.env.E2B_API_KEY = "e2b_0000000000000000000000000000000000000000"
   Template.getTags = async () => {
     throw new Error("managed template lookup should not call getTags")
   }
-  globalThis.fetch = async (input, init) => {
+  setApiFetchHandler(async (input, init) => {
     const method = init?.method ?? input.method ?? "GET"
     calls.push(["fetch", method])
     return jsonResponse([])
-  }
+  })
   Template.build = async (_template, name) => {
     calls.push(["build", name])
   }
@@ -161,7 +163,7 @@ test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
     ])
   } finally {
     restoreTestEnv(originalApiKey)
-    globalThis.fetch = originalFetch
+    clearApiFetchHandler()
     Template.getTags = originalGetTags
     Template.build = originalBuild
   }
@@ -169,7 +171,6 @@ test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
 
 test("ensureManagedWorkspaceTemplate deletes errored managed templates before rebuilding", async () => {
   const originalApiKey = process.env.E2B_API_KEY
-  const originalFetch = globalThis.fetch
   const originalGetTags = Template.getTags
   const originalBuild = Template.build
   const calls = []
@@ -180,14 +181,14 @@ test("ensureManagedWorkspaceTemplate deletes errored managed templates before re
   }
   const alias = buildManagedTemplateAlias(inputs)
 
-  process.env.E2B_API_KEY = "e2b_test"
+  process.env.E2B_API_KEY = "e2b_0000000000000000000000000000000000000000"
   Template.getTags = async () => {
     throw new Error("managed template lookup should not call getTags")
   }
   Template.build = async (_template, name) => {
     calls.push(["build", name])
   }
-  globalThis.fetch = async (input, init) => {
+  setApiFetchHandler(async (input, init) => {
     const method = init?.method ?? input.method ?? "GET"
     calls.push(["fetch", method])
     if (method === "DELETE") {
@@ -201,7 +202,7 @@ test("ensureManagedWorkspaceTemplate deletes errored managed templates before re
         buildStatus: "error",
       },
     ])
-  }
+  })
 
   try {
     const template = await ensureManagedWorkspaceTemplate(inputs)
@@ -214,7 +215,7 @@ test("ensureManagedWorkspaceTemplate deletes errored managed templates before re
     ])
   } finally {
     restoreTestEnv(originalApiKey)
-    globalThis.fetch = originalFetch
+    clearApiFetchHandler()
     Template.getTags = originalGetTags
     Template.build = originalBuild
   }
@@ -222,7 +223,6 @@ test("ensureManagedWorkspaceTemplate deletes errored managed templates before re
 
 test("ensureManagedWorkspaceTemplate waits for in-progress managed templates", async () => {
   const originalApiKey = process.env.E2B_API_KEY
-  const originalFetch = globalThis.fetch
   const originalGetTags = Template.getTags
   const originalBuild = Template.build
   const calls = []
@@ -234,14 +234,14 @@ test("ensureManagedWorkspaceTemplate waits for in-progress managed templates", a
   const alias = buildManagedTemplateAlias(inputs)
   const statuses = ["building", "ready"]
 
-  process.env.E2B_API_KEY = "e2b_test"
+  process.env.E2B_API_KEY = "e2b_0000000000000000000000000000000000000000"
   Template.getTags = async () => {
     throw new Error("managed template lookup should not call getTags")
   }
   Template.build = async () => {
     throw new Error("managed template build should not run while another build is pending")
   }
-  globalThis.fetch = async (input, init) => {
+  setApiFetchHandler(async (input, init) => {
     const method = init?.method ?? input.method ?? "GET"
     const buildStatus = statuses.shift() ?? "ready"
     calls.push(["fetch", method, buildStatus])
@@ -253,7 +253,7 @@ test("ensureManagedWorkspaceTemplate waits for in-progress managed templates", a
         buildStatus,
       },
     ])
-  }
+  })
 
   try {
     const template = await ensureManagedWorkspaceTemplate(inputs)
@@ -265,7 +265,7 @@ test("ensureManagedWorkspaceTemplate waits for in-progress managed templates", a
     ])
   } finally {
     restoreTestEnv(originalApiKey)
-    globalThis.fetch = originalFetch
+    clearApiFetchHandler()
     Template.getTags = originalGetTags
     Template.build = originalBuild
   }

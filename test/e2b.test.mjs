@@ -15,6 +15,9 @@ import {
   sandboxTargetHeaders,
 } from "../dist/e2b.js"
 import { buildManagedBaseTemplateAlias, buildManagedWorkspaceTemplateAlias } from "../dist/template.js"
+import { clearApiFetchHandler, installApiFetchShim, setApiFetchHandler } from "./helpers/api-fetch-mock.mjs"
+
+installApiFetchShim()
 
 const workspaceInfo = {
   id: "workspace-id",
@@ -100,7 +103,6 @@ test("claimProvisioningSandbox creates a durable provisioning claim", async () =
 
 test("createWorkspaceSandbox wraps versioned published templates", async () => {
   const originalApiKey = process.env.E2B_API_KEY
-  const originalFetch = globalThis.fetch
   const originalCreate = Sandbox.create
   const originalGetTags = Template.getTags
   const originalBuild = Template.build
@@ -121,12 +123,12 @@ test("createWorkspaceSandbox wraps versioned published templates", async () => {
     calls.push(["create", template, options.metadata.opencodeWorkspaceId])
     return { sandboxId: "workspace-sandbox" }
   }
-  process.env.E2B_API_KEY = "e2b_test"
-  globalThis.fetch = async (input, init) => {
+  process.env.E2B_API_KEY = "e2b_0000000000000000000000000000000000000000"
+  setApiFetchHandler(async (input, init) => {
     const method = init?.method ?? input.method ?? "GET"
     calls.push(["fetch", method])
     return jsonResponse([])
-  }
+  })
   Template.getTags = async () => {
     throw new Error("workspace sandbox creation should not call getTags")
   }
@@ -151,7 +153,7 @@ test("createWorkspaceSandbox wraps versioned published templates", async () => {
     ])
   } finally {
     restoreTestEnv(originalApiKey)
-    globalThis.fetch = originalFetch
+    clearApiFetchHandler()
     Sandbox.create = originalCreate
     Template.getTags = originalGetTags
     Template.build = originalBuild
@@ -160,7 +162,6 @@ test("createWorkspaceSandbox wraps versioned published templates", async () => {
 
 test("createWorkspaceSandbox builds a managed base when published template is missing", async () => {
   const originalApiKey = process.env.E2B_API_KEY
-  const originalFetch = globalThis.fetch
   const originalCreate = Sandbox.create
   const originalGetTags = Template.getTags
   const originalBuild = Template.build
@@ -194,12 +195,12 @@ test("createWorkspaceSandbox builds a managed base when published template is mi
     calls.push(["create", template])
     return { sandboxId: "managed-sandbox" }
   }
-  process.env.E2B_API_KEY = "e2b_test"
-  globalThis.fetch = async (input, init) => {
+  process.env.E2B_API_KEY = "e2b_0000000000000000000000000000000000000000"
+  setApiFetchHandler(async (input, init) => {
     const method = init?.method ?? input.method ?? "GET"
     calls.push(["fetch", method])
     return jsonResponse([])
-  }
+  })
   Template.getTags = async () => {
     throw new Error("workspace sandbox creation should not call getTags")
   }
@@ -232,7 +233,7 @@ test("createWorkspaceSandbox builds a managed base when published template is mi
     ])
   } finally {
     restoreTestEnv(originalApiKey)
-    globalThis.fetch = originalFetch
+    clearApiFetchHandler()
     Sandbox.create = originalCreate
     Template.getTags = originalGetTags
     Template.build = originalBuild
@@ -241,13 +242,12 @@ test("createWorkspaceSandbox builds a managed base when published template is mi
 
 test("createWorkspaceSandbox never calls template getTags", async () => {
   const originalApiKey = process.env.E2B_API_KEY
-  const originalFetch = globalThis.fetch
   const originalCreate = Sandbox.create
   const originalGetTags = Template.getTags
   const originalBuild = Template.build
 
-  process.env.E2B_API_KEY = "e2b_test"
-  globalThis.fetch = async () => jsonResponse([])
+  process.env.E2B_API_KEY = "e2b_0000000000000000000000000000000000000000"
+  setApiFetchHandler(async () => jsonResponse([]))
   Sandbox.create = async () => ({ sandboxId: "workspace-sandbox" })
   Template.getTags = async () => {
     throw new Error("getTags should not be called")
@@ -266,7 +266,7 @@ test("createWorkspaceSandbox never calls template getTags", async () => {
     assert.equal(sandbox.sandboxId, "workspace-sandbox")
   } finally {
     restoreTestEnv(originalApiKey)
-    globalThis.fetch = originalFetch
+    clearApiFetchHandler()
     Sandbox.create = originalCreate
     Template.getTags = originalGetTags
     Template.build = originalBuild

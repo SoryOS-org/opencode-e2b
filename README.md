@@ -55,9 +55,15 @@ On workspace create, the plugin:
 - ensures the uploaded project has a git repository and writes `.git/opencode`;
 - writes per-workspace OpenCode env values to `/tmp/.opencode-e2b.env`;
 - releases the managed workspace template's marker-gated systemd `opencode serve` service;
-- waits for `/global/health` before returning the remote workspace target.
+- waits for `/global/health`, then for the sync endpoints (`/global/event` and `/sync/history`) before returning the remote workspace target.
 
 OpenCode persists `configure()` before `create()`, so the plugin does not store E2B sandbox IDs in the OpenCode workspace row. Instead it writes workspace metadata to E2B and later finds sandboxes with `Sandbox.list`.
+
+## Session Warp
+
+OpenCode's `experimental/workspace/warp` endpoint moves a session's sync history into a target workspace, or detaches it back to the local project. Warp is orchestrated by the OpenCode server and reaches the sandbox through the adapter's `target()`; it relies on the remote sync endpoints being live.
+
+The plugin gates `create()` on sync readiness (`/global/event` and `/sync/history`), so a workspace is only returned once it can accept a warped session. No additional adapter hook is required — warping into and out of an `e2b` workspace works as soon as `create()` completes. Warp with `copyChanges: true` carries the session's local changes into the sandbox; OpenCode's core sync engine reconciles event history on the remote side.
 
 ## Compatibility
 

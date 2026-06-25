@@ -65,6 +65,8 @@ OpenCode's `experimental/workspace/warp` endpoint moves a session's sync history
 
 The plugin gates `create()` on sync readiness (`/global/event` and `/sync/history`), so a workspace is only returned once it can accept a warped session. No additional adapter hook is required — warping into and out of an `e2b` workspace works as soon as `create()` completes. Warp with `copyChanges: true` carries the session's local changes into the sandbox; OpenCode's core sync engine reconciles event history on the remote side.
 
+> OpenCode's experimental workspace API is still unstable. As of `1.17.11`, `experimental/workspace/warp` is the live, workspace-targeting operation (not marked deprecated); a separate `experimental/control-plane/move-session` endpoint moves a session between local project directories only. These may be unified under a single "move" concept in a future OpenCode release — track the upstream API when bumping the supported runtime.
+
 ## Compatibility
 
 - Minimum supported OpenCode runtime: `1.16.0`.

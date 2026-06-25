@@ -16,6 +16,7 @@ import {
 } from "../dist/e2b.js"
 import { buildManagedBaseTemplateAlias, buildManagedWorkspaceTemplateAlias } from "../dist/template.js"
 import { clearApiFetchHandler, installApiFetchShim, setApiFetchHandler } from "./helpers/api-fetch-mock.mjs"
+import { FAKE_E2B_API_KEY } from "./helpers/fixtures.mjs"
 
 installApiFetchShim()
 
@@ -123,7 +124,7 @@ test("createWorkspaceSandbox wraps versioned published templates", async () => {
     calls.push(["create", template, options.metadata.opencodeWorkspaceId])
     return { sandboxId: "workspace-sandbox" }
   }
-  process.env.E2B_API_KEY = "e2b_0000000000000000000000000000000000000000"
+  process.env.E2B_API_KEY = FAKE_E2B_API_KEY
   setApiFetchHandler(async (input, init) => {
     const method = init?.method ?? input.method ?? "GET"
     calls.push(["fetch", method])
@@ -195,7 +196,7 @@ test("createWorkspaceSandbox builds a managed base when published template is mi
     calls.push(["create", template])
     return { sandboxId: "managed-sandbox" }
   }
-  process.env.E2B_API_KEY = "e2b_0000000000000000000000000000000000000000"
+  process.env.E2B_API_KEY = FAKE_E2B_API_KEY
   setApiFetchHandler(async (input, init) => {
     const method = init?.method ?? input.method ?? "GET"
     calls.push(["fetch", method])
@@ -246,7 +247,7 @@ test("createWorkspaceSandbox never calls template getTags", async () => {
   const originalGetTags = Template.getTags
   const originalBuild = Template.build
 
-  process.env.E2B_API_KEY = "e2b_0000000000000000000000000000000000000000"
+  process.env.E2B_API_KEY = FAKE_E2B_API_KEY
   setApiFetchHandler(async () => jsonResponse([]))
   Sandbox.create = async () => ({ sandboxId: "workspace-sandbox" })
   Template.getTags = async () => {

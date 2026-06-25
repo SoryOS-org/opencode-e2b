@@ -19,6 +19,7 @@ import {
   RUNTIME_ENV_FILE,
 } from "../dist/template.js"
 import { clearApiFetchHandler, installApiFetchShim, setApiFetchHandler } from "./helpers/api-fetch-mock.mjs"
+import { FAKE_E2B_API_KEY } from "./helpers/fixtures.mjs"
 
 installApiFetchShim()
 
@@ -139,7 +140,7 @@ test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
     pluginPackageVersion: "fallback-test",
   }
 
-  process.env.E2B_API_KEY = "e2b_0000000000000000000000000000000000000000"
+  process.env.E2B_API_KEY = FAKE_E2B_API_KEY
   Template.getTags = async () => {
     throw new Error("managed template lookup should not call getTags")
   }
@@ -181,7 +182,7 @@ test("ensureManagedWorkspaceTemplate deletes errored managed templates before re
   }
   const alias = buildManagedTemplateAlias(inputs)
 
-  process.env.E2B_API_KEY = "e2b_0000000000000000000000000000000000000000"
+  process.env.E2B_API_KEY = FAKE_E2B_API_KEY
   Template.getTags = async () => {
     throw new Error("managed template lookup should not call getTags")
   }
@@ -234,7 +235,7 @@ test("ensureManagedWorkspaceTemplate waits for in-progress managed templates", a
   const alias = buildManagedTemplateAlias(inputs)
   const statuses = ["building", "ready"]
 
-  process.env.E2B_API_KEY = "e2b_0000000000000000000000000000000000000000"
+  process.env.E2B_API_KEY = FAKE_E2B_API_KEY
   Template.getTags = async () => {
     throw new Error("managed template lookup should not call getTags")
   }

@@ -17,6 +17,7 @@ import {
 import { runTemplateGC } from "./gc.js"
 import { assertWorkspaceCompatibility, resolveLocalRuntimeVersion } from "./runtime.js"
 import type { SandboxStore } from "./sandbox-store.js"
+import { errorMessage } from "./shared.js"
 import type {
   E2BWorkspacePluginOptions,
   NormalizedE2BWorkspaceConfig,
@@ -40,42 +41,96 @@ export function createE2BWorkspaceAdapter(deps: WorkspaceAdapterDeps): RuntimeWo
     name: "E2B Sandbox",
     description: "Provision a sandboxed OpenCode workspace in E2B",
     async configure(info) {
-      return configureWorkspace(info, deps.options, deps.serverUrl, deps.logger, deps.client)
+      return withErrorToast(deps, "Configuring E2B workspace", () =>
+        configureWorkspace(info, deps.options, deps.serverUrl, deps.logger, deps.client),
+      )
     },
     async create(info, env, from) {
-      assertE2BApiKeyAvailable()
-      await createWorkspace({
-        info,
-        env,
-        from,
-        localDirectory: deps.directory,
-        options: deps.options,
-        serverUrl: deps.serverUrl,
-        client: deps.client,
-        logger: deps.logger,
-        store: deps.sandboxStore,
+      return withErrorToast(deps, "Creating E2B workspace", async () => {
+        assertE2BApiKeyAvailable()
+        await createWorkspace({
+          info,
+          env,
+          from,
+          localDirectory: deps.directory,
+          options: deps.options,
+          serverUrl: deps.serverUrl,
+          client: deps.client,
+          logger: deps.logger,
+          store: deps.sandboxStore,
+        })
       })
     },
     async remove(info) {
-      assertE2BApiKeyAvailable()
-      const config = resolveWorkspaceConfig(info, deps.options)
-      await removeWorkspaceSandbox(info, config, deps.logger, deps.sandboxStore)
-      if (deps.gcConfig.enabled) {
-        void runTemplateGC(deps.gcConfig, deps.logger).catch(() => {})
-      }
+      return withErrorToast(deps, "Removing E2B workspace", async () => {
+        assertE2BApiKeyAvailable()
+        const config = resolveWorkspaceConfig(info, deps.options)
+        await removeWorkspaceSandbox(info, config, deps.logger, deps.sandboxStore)
+        if (deps.gcConfig.enabled) {
+          void runTemplateGC(deps.gcConfig, deps.logger).catch(() => {})
+        }
+      })
     },
     async target(info) {
-      assertE2BApiKeyAvailable()
-      return resolveWorkspaceTarget({
-        info,
-        options: deps.options,
-        serverUrl: deps.serverUrl,
-        client: deps.client,
-        logger: deps.logger,
-        store: deps.sandboxStore,
+      return withErrorToast(deps, "Connecting to E2B workspace", () => {
+        assertE2BApiKeyAvailable()
+        return resolveWorkspaceTarget({
+          info,
+          options: deps.options,
+          serverUrl: deps.serverUrl,
+          client: deps.client,
+          logger: deps.logger,
+          store: deps.sandboxStore,
+        })
       })
     },
   }
+}
+
+const TOAST_MESSAGE_MAX_LENGTH = 300
+
+/**
+ * Run an adapter lifecycle operation and, on failure, surface the error to the
+ * user as a TUI toast before rethrowing. OpenCode logs adapter errors but does
+ * not always show them, so the toast is what makes provisioning failures
+ * visible. The toast is best-effort (TUI-only and a no-op in headless servers)
+ * and must never mask or replace the original error.
+ */
+async function withErrorToast<T>(
+  deps: WorkspaceAdapterDeps,
+  action: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation()
+  } catch (error) {
+    await showErrorToast(deps, action, error)
+    throw error
+  }
+}
+
+async function showErrorToast(deps: WorkspaceAdapterDeps, action: string, error: unknown): Promise<void> {
+  try {
+    await deps.client.tui.showToast({
+      body: {
+        title: "E2B workspace",
+        message: `${action} failed: ${truncate(errorMessage(error), TOAST_MESSAGE_MAX_LENGTH)}`,
+        variant: "error",
+      },
+      query: { directory: deps.directory },
+    })
+  } catch (toastError) {
+    // Toasts are best-effort and only available in the TUI; never let a failed
+    // toast mask the workspace error being reported.
+    await deps.logger.debug("failed to show error toast", {
+      action,
+      error: errorMessage(toastError),
+    })
+  }
+}
+
+function truncate(value: string, max: number): string {
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value
 }
 
 async function configureWorkspace(

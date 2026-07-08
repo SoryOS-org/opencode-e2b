@@ -68,8 +68,6 @@ The OpenCode server orchestrates warp and reaches the sandbox through the adapte
 With `copyChanges: true`, warp also carries the session's local changes into the sandbox; OpenCode's core sync engine reconciles the event history on the remote side.
 
 > **Heads up:** OpenCode's experimental workspace API is still unstable, so re-check this when bumping the supported runtime.
->
-> As of `1.17.11`, `experimental/workspace/warp` is live and not deprecated — it's the operation the `e2b` adapter serves. Don't confuse it with `experimental/control-plane/move-session`, a separate feature that moves a session between local project directories and does not involve workspace adapters.
 
 ## Compatibility
 

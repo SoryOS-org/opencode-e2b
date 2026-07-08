@@ -11,6 +11,7 @@ import {
   readSandboxCompatibility,
   releaseProvisioningSandbox,
   removeWorkspaceSandbox,
+  requireWorkspaceSandboxRecord,
   sandboxBaseUrl,
   sandboxTargetHeaders,
 } from "../dist/e2b.js"
@@ -336,6 +337,89 @@ test("findWorkspaceSandboxRecord deletes stale cache and falls back to limited l
     ])
     assert.equal(store.row.sandboxID, "listed-sandbox")
     assert.equal(store.row.status, "ready")
+  } finally {
+    Sandbox.connect = originalConnect
+    Sandbox.list = originalList
+  }
+})
+
+test("requireWorkspaceSandboxRecord resumes via the E2B list when the cache is empty", async () => {
+  const originalConnect = Sandbox.connect
+  const originalList = Sandbox.list
+  const store = createMemoryStore(undefined)
+  const calls = []
+
+  Sandbox.connect = async (sandboxId) => {
+    calls.push(["connect", sandboxId])
+    return { sandboxId }
+  }
+  Sandbox.list = (options) => {
+    calls.push(["list", options.limit])
+    return createPaginator([
+      [
+        {
+          sandboxId: "resumed-sandbox",
+          metadata: { opencodeWorkspaceId: workspaceInfo.id },
+        },
+      ],
+    ])
+  }
+
+  try {
+    const record = await requireWorkspaceSandboxRecord(workspaceInfo, normalizeOptions(), undefined, store)
+    assert.equal(record.sandbox.sandboxId, "resumed-sandbox")
+    assert.equal(store.row.sandboxID, "resumed-sandbox")
+    assert.equal(store.row.status, "ready")
+    assert.deepEqual(calls, [
+      ["list", 2],
+      ["connect", "resumed-sandbox"],
+    ])
+  } finally {
+    Sandbox.connect = originalConnect
+    Sandbox.list = originalList
+  }
+})
+
+test("requireWorkspaceSandboxRecord throws a clear error when the workspace has no sandbox", async () => {
+  const originalConnect = Sandbox.connect
+  const originalList = Sandbox.list
+
+  Sandbox.connect = async () => {
+    throw new Error("connect should not run when nothing is listed")
+  }
+  Sandbox.list = () => createPaginator([])
+
+  try {
+    await assert.rejects(
+      requireWorkspaceSandboxRecord(workspaceInfo, normalizeOptions(), undefined, undefined),
+      new RegExp(`No E2B sandbox found for workspace ${workspaceInfo.id}`),
+    )
+  } finally {
+    Sandbox.connect = originalConnect
+    Sandbox.list = originalList
+  }
+})
+
+test("requireWorkspaceSandboxRecord rejects when multiple sandboxes match the workspace", async () => {
+  const originalConnect = Sandbox.connect
+  const originalList = Sandbox.list
+
+  Sandbox.connect = async () => {
+    throw new Error("connect should not run for an ambiguous match")
+  }
+  Sandbox.list = () =>
+    createPaginator([
+      [
+        { sandboxId: "sandbox-a", metadata: { opencodeWorkspaceId: workspaceInfo.id } },
+        { sandboxId: "sandbox-b", metadata: { opencodeWorkspaceId: workspaceInfo.id } },
+      ],
+    ])
+
+  try {
+    await assert.rejects(
+      requireWorkspaceSandboxRecord(workspaceInfo, normalizeOptions(), undefined, undefined),
+      /Found multiple E2B sandboxes for workspace .*sandbox-a, sandbox-b/,
+    )
   } finally {
     Sandbox.connect = originalConnect
     Sandbox.list = originalList

@@ -233,6 +233,7 @@ async function provisionFreshWorkspace(params: {
       info: params.info,
       config: params.config,
       env: params.env,
+      localDirectory: params.localDirectory,
       logger: params.logger,
     })
 

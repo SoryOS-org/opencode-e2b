@@ -30,6 +30,12 @@ const SYSTEMD_SERVICE_NAME = "opencode-e2b.service"
 const SYSTEMD_SERVICE_PATH = `/etc/systemd/system/${SYSTEMD_SERVICE_NAME}`
 const SYSTEMD_START_SCRIPT_PATH = "/usr/local/bin/opencode-e2b-start"
 
+// Run opencode as the project-owning user, not root (`User=` is how a systemd
+// service drops root). As root, git's dubious-ownership check rejects the
+// user-owned repo, so opencode can't detect the git project and a warped
+// session's insert fails with a remote FOREIGN KEY error (opaque 500).
+const SANDBOX_USER = "user"
+
 /**
  * E2B's `Sandbox.create({ envs })` only affects later commands, not the
  * template init command, so OpenCode env is delivered through this file.
@@ -416,6 +422,7 @@ export function buildSystemdUnitContent(): string {
     "",
     "[Service]",
     "Type=simple",
+    `User=${SANDBOX_USER}`,
     "Restart=on-failure",
     "RestartSec=1",
     "KillSignal=SIGINT",

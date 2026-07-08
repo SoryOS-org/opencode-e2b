@@ -26,9 +26,10 @@ export async function bootstrapWorkspace(params: {
   info: WorkspaceInfo
   config: NormalizedE2BWorkspaceConfig
   env: Record<string, string | undefined>
+  localDirectory?: string
   logger?: PluginLogger
 }): Promise<void> {
-  await runBootstrapCommands(params.sandbox, params.info, params.config)
+  await runBootstrapCommands(params.sandbox, params.info, params.config, params.localDirectory)
   await writeProjectMarker(params.sandbox, params.info, params.config)
   await writeRuntimeEnvFile(params.sandbox, params.env, params.logger)
   await signalBootstrapReady(params.sandbox, params.logger)
@@ -40,14 +41,22 @@ async function runBootstrapCommands(
   sandbox: Sandbox,
   info: WorkspaceInfo,
   config: NormalizedE2BWorkspaceConfig,
+  localDirectory?: string,
 ): Promise<void> {
-  await runCheckedCommand(sandbox, buildBootstrapCommand(info, config))
+  await runCheckedCommand(sandbox, buildBootstrapCommand(info, config, localDirectory))
 }
 
-export function buildBootstrapCommand(info: WorkspaceInfo, config: NormalizedE2BWorkspaceConfig): string {
+export function buildBootstrapCommand(
+  info: WorkspaceInfo,
+  config: NormalizedE2BWorkspaceConfig,
+  localDirectory?: string,
+): string {
   const branch = info.branch ?? "main"
   const commands = [
     `mkdir -p ${shellSingleQuote(config.projectPath)}`,
+    // A warped session keeps its local directory; opencode resolves that path
+    // on the remote, so mirror it onto the project (else prompts ENOENT).
+    ...buildMirrorPathCommands(localDirectory, config.projectPath),
     `cd ${shellSingleQuote(config.projectPath)}`,
     ...config.bootstrap.prepareCommands
       .map((command) => command.trim())
@@ -57,6 +66,17 @@ export function buildBootstrapCommand(info: WorkspaceInfo, config: NormalizedE2B
   ]
 
   return commands.join(" && ")
+}
+
+// sudo because the local path may live outside $HOME (e.g. macOS `/Users/...`).
+function buildMirrorPathCommands(localDirectory: string | undefined, projectPath: string): string[] {
+  if (!localDirectory || localDirectory === projectPath) return []
+  const parent = posix.dirname(localDirectory)
+  const commands = [`sudo ln -sfn ${shellSingleQuote(projectPath)} ${shellSingleQuote(localDirectory)}`]
+  if (parent && parent !== "." && parent !== "/") {
+    commands.unshift(`sudo mkdir -p ${shellSingleQuote(parent)}`)
+  }
+  return commands
 }
 
 async function writeProjectMarker(

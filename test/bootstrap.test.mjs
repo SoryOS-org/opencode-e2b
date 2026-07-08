@@ -73,6 +73,29 @@ test("buildBootstrapCommand combines prepare commands and git initialization", (
   )
 })
 
+test("buildBootstrapCommand mirrors the local directory path onto the remote project", () => {
+  const command = buildBootstrapCommand(
+    { id: "workspace-123", projectID: "project-456", branch: "main" },
+    normalizeOptions({ projectPath: "/home/user/project" }),
+    "/Users/johndoe/Documents/GitHub/agent-bay",
+  )
+
+  // A warped session keeps its local directory; the remote must resolve it.
+  // The path can be outside $HOME, so the mirror runs with sudo.
+  assert.match(command, /sudo mkdir -p '\/Users\/johndoe\/Documents\/GitHub'/)
+  assert.match(command, /sudo ln -sfn '\/home\/user\/project' '\/Users\/johndoe\/Documents\/GitHub\/agent-bay'/)
+})
+
+test("buildBootstrapCommand skips the mirror when local path equals the project path", () => {
+  const command = buildBootstrapCommand(
+    { id: "workspace-123", projectID: "project-456", branch: "main" },
+    normalizeOptions({ projectPath: "/home/user/project" }),
+    "/home/user/project",
+  )
+
+  assert.doesNotMatch(command, /ln -sfn/)
+})
+
 test("bootstrapWorkspace releases the systemd opencode service with a marker", async () => {
   const originalFetch = globalThis.fetch
   const commandRuns = []

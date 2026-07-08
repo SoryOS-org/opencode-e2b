@@ -77,13 +77,16 @@ test("buildBootstrapCommand mirrors the local directory path onto the remote pro
   const command = buildBootstrapCommand(
     { id: "workspace-123", projectID: "project-456", branch: "main" },
     normalizeOptions({ projectPath: "/home/user/project" }),
-    "/Users/johndoe/Documents/GitHub/agent-bay",
+    "/Users/johndoe/Documents/GitHub/acme-app",
   )
 
   // A warped session keeps its local directory; the remote must resolve it.
   // The path can be outside $HOME, so the mirror runs with sudo.
   assert.match(command, /sudo mkdir -p '\/Users\/johndoe\/Documents\/GitHub'/)
-  assert.match(command, /sudo ln -sfn '\/home\/user\/project' '\/Users\/johndoe\/Documents\/GitHub\/agent-bay'/)
+  assert.match(
+    command,
+    /sudo ln -sfn '\/home\/user\/project' '\/Users\/johndoe\/Documents\/GitHub\/acme-app'/,
+  )
 })
 
 test("buildBootstrapCommand skips the mirror when local path equals the project path", () => {

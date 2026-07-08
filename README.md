@@ -61,11 +61,15 @@ OpenCode persists `configure()` before `create()`, so the plugin does not store 
 
 ## Session Warp
 
-OpenCode's `experimental/workspace/warp` endpoint moves a session's sync history into a target workspace, or detaches it back to the local project. Warp is orchestrated by the OpenCode server and reaches the sandbox through the adapter's `target()`; it relies on the remote sync endpoints being live.
+_Session warp_ moves a session's sync history into a target workspace — or detaches it back to the local project. It runs through OpenCode's `experimental/workspace/warp` endpoint.
 
-The plugin gates `create()` on sync readiness (`/global/event` and `/sync/history`), so a workspace is only returned once it can accept a warped session. No additional adapter hook is required — warping into and out of an `e2b` workspace works as soon as `create()` completes. Warp with `copyChanges: true` carries the session's local changes into the sandbox; OpenCode's core sync engine reconciles event history on the remote side.
+The OpenCode server orchestrates warp and reaches the sandbox through the adapter's `target()`, so it depends on the remote sync endpoints being live. Since `create()` already gates on sync readiness (`/global/event` and `/sync/history`), a workspace is only handed back once it can accept a warped session. As a result, warping into and out of an `e2b` workspace works as soon as `create()` completes — no extra adapter hook needed.
 
-> OpenCode's experimental workspace API is still unstable, so re-check it when bumping the supported runtime. As of `1.17.11`, `experimental/workspace/warp` (move a session into a workspace) is live and not deprecated — this is the operation the `e2b` adapter serves. It is distinct from `experimental/control-plane/move-session`, a separate feature that moves a session between local project directories and does not involve workspace adapters.
+With `copyChanges: true`, warp also carries the session's local changes into the sandbox; OpenCode's core sync engine reconciles the event history on the remote side.
+
+> **Heads up:** OpenCode's experimental workspace API is still unstable, so re-check this when bumping the supported runtime.
+>
+> As of `1.17.11`, `experimental/workspace/warp` is live and not deprecated — it's the operation the `e2b` adapter serves. Don't confuse it with `experimental/control-plane/move-session`, a separate feature that moves a session between local project directories and does not involve workspace adapters.
 
 ## Compatibility
 

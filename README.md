@@ -81,7 +81,7 @@ Common options:
 
 - `nodeVariant`: Node image variant for E2B managed templates. Default: `22-slim`.
 - `sandboxTimeoutMs`: E2B sandbox timeout. Default: 1 hour.
-- `projectPath`: project directory inside the sandbox. Default: `/home/user/project`.
+- `projectPath`: project directory inside the sandbox. Must be within `/home/user` (the sandbox user's home) so the project stays user-owned and passes git's ownership check. Default: `/home/user/project`.
 - `serverPort`: remote OpenCode server port. Default: `4096`.
 - `secure`: enable E2B secure sandbox controller traffic. Default: `true`.
 - `network.allowPublicTraffic`: allow unauthenticated access to sandbox service URLs. Default: `false`. When disabled, target requests include E2B's `e2b-traffic-access-token` header.

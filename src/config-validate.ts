@@ -1,4 +1,23 @@
+import { posix } from "node:path"
+
 import type { E2BWorkspacePluginOptions } from "./types.js"
+
+/**
+ * The workspace systemd service runs `opencode serve` as the sandbox `user`
+ * account (home `/home/user`). The uploaded project must live under that home
+ * so it is owned by the running user and passes git's dubious-ownership check;
+ * a path outside it (e.g. `/root`, `/opt`) makes the run-as-user service trip
+ * that check and silently breaks session warp.
+ */
+export const SANDBOX_PROJECT_ROOT = "/home/user"
+
+export function isWithinSandboxProjectRoot(absolutePath: string): boolean {
+  let normalized = posix.normalize(absolutePath)
+  if (normalized.length > 1 && normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1)
+  }
+  return normalized === SANDBOX_PROJECT_ROOT || normalized.startsWith(`${SANDBOX_PROJECT_ROOT}/`)
+}
 
 export function validatePluginOptions(raw: unknown): E2BWorkspacePluginOptions | undefined {
   if (raw === undefined || raw === null) return undefined
@@ -121,6 +140,12 @@ function requireAbsoluteProjectPath(value: unknown, fieldName: string, errors: s
   }
   if (!value.startsWith("/")) {
     errors.push(`${fieldName} must be an absolute POSIX path`)
+    return
+  }
+  if (!isWithinSandboxProjectRoot(value)) {
+    errors.push(
+      `${fieldName} must be within ${SANDBOX_PROJECT_ROOT} so the project is owned by the sandbox user`,
+    )
   }
 }
 

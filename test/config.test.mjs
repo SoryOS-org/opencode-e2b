@@ -63,10 +63,36 @@ test("normalizeOptions validates path and port ranges", () => {
   assert.throws(() => normalizeOptions({ serverPort: 70000 }), /between 1 and 65535/)
 })
 
+test("projectPath must live under /home/user", () => {
+  // Accepted: the home root itself and any descendant.
+  assert.equal(normalizeOptions({ projectPath: "/home/user" }).projectPath, "/home/user")
+  assert.equal(
+    normalizeOptions({ projectPath: "/home/user/app/nested" }).projectPath,
+    "/home/user/app/nested",
+  )
+  assert.equal(normalizeOptions({ projectPath: "/home/user/app/" }).projectPath, "/home/user/app/")
+
+  // Rejected: outside the sandbox user's home.
+  for (const bad of ["/root/project", "/opt/app", "/home/other", "/home/user2", "/home/user/../root"]) {
+    assert.throws(
+      () => normalizeOptions({ projectPath: bad }),
+      /within \/home\/user/,
+      `expected ${bad} to be rejected`,
+    )
+  }
+})
+
+test("validatePluginOptions rejects a projectPath outside /home/user", () => {
+  assert.throws(
+    () => validatePluginOptions({ projectPath: "/opt/app" }),
+    /projectPath must be within \/home\/user/,
+  )
+})
+
 test("resolveWorkspaceConfig keeps persisted workspace identity stable", () => {
   const persistedConfig = normalizeOptions({
     nodeVariant: "20-slim",
-    projectPath: "/workspace/project",
+    projectPath: "/home/user/workspace",
     serverPort: 7777,
     secure: true,
     metadata: {
@@ -85,7 +111,7 @@ test("resolveWorkspaceConfig keeps persisted workspace identity stable", () => {
 
   const resolved = resolveWorkspaceConfig(info, {
     nodeVariant: "22-slim",
-    projectPath: "/different",
+    projectPath: "/home/user/different",
     serverPort: 4096,
     secure: false,
     metadata: {
@@ -95,7 +121,7 @@ test("resolveWorkspaceConfig keeps persisted workspace identity stable", () => {
   })
 
   assert.equal(resolved.nodeVariant, "20-slim")
-  assert.equal(resolved.projectPath, "/workspace/project")
+  assert.equal(resolved.projectPath, "/home/user/workspace")
   assert.equal(resolved.serverPort, 7777)
   assert.equal(resolved.secure, true)
   assert.deepEqual(resolved.metadata, {

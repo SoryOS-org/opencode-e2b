@@ -10,6 +10,7 @@ import type {
 import { DEFAULT_TEMPLATE_GC_COOLDOWN_MS, DEFAULT_TEMPLATE_GC_TTL_MS, MIN_TEMPLATE_GC_TTL_MS } from "./gc.js"
 
 export { validatePluginOptions } from "./config-validate.js"
+import { isWithinSandboxProjectRoot, SANDBOX_PROJECT_ROOT } from "./config-validate.js"
 
 export const CURRENT_WORKSPACE_API_VERSION = "1"
 const DEFAULT_NODE_VARIANT = "22-slim"
@@ -232,6 +233,9 @@ function requireAbsoluteProjectPath(value: string | undefined, fieldName: string
   }
   if (!value.startsWith("/")) {
     throw new Error(`Expected ${fieldName} to be an absolute POSIX path`)
+  }
+  if (!isWithinSandboxProjectRoot(value)) {
+    throw new Error(`Expected ${fieldName} to be within ${SANDBOX_PROJECT_ROOT}`)
   }
   return value
 }

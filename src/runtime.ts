@@ -14,7 +14,7 @@ const HEALTH_TIMEOUT_MS = 1_500
  * reuse sandboxes. Bumping this forces every running controller and every
  * cached sandbox to be re-validated after upgrade.
  */
-const MINIMUM_SUPPORTED_RUNTIME_VERSION = "1.17.11"
+const MINIMUM_SUPPORTED_RUNTIME_VERSION = "1.16.0"
 
 let installedRuntimeVersionPromise: Promise<string> | undefined
 let installedPluginVersionPromise: Promise<string> | undefined

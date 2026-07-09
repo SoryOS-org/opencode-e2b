@@ -458,7 +458,15 @@ export function buildSystemdStartScript(projectPath: string, serverPort: number)
 export function buildManagedBaseTemplateAlias(inputs: ManagedBaseTemplateInputs): string {
   const readableNodeVariant = normalizeAliasSegment(inputs.nodeVariant).slice(0, 18) || "node"
   const hash = createHash("sha256")
-    .update([inputs.nodeVariant, inputs.runtimeVersion, inputs.pluginPackageVersion].join("\0"))
+    .update(
+      [
+        inputs.nodeVariant,
+        inputs.runtimeVersion,
+        inputs.pluginPackageVersion,
+        // Hash the baked install command too, so changing it produces a new alias and a fresh build.
+        buildOpenCodeInstallCommand(inputs.runtimeVersion),
+      ].join("\0"),
+    )
     .digest("hex")
     .slice(0, 12)
 
@@ -476,6 +484,10 @@ export function buildManagedWorkspaceTemplateAlias(inputs: ManagedWorkspaceTempl
         inputs.projectPath,
         String(inputs.serverPort),
         inputs.pluginPackageVersion,
+        // Hash the baked systemd unit + start command, so a unit change (e.g. User=) yields a
+        // new alias and forces a rebuild instead of reusing a stale template.
+        buildSystemdServiceInstallCommand(inputs.projectPath, inputs.serverPort),
+        buildSystemdStartCommand(),
       ].join("\0"),
     )
     .digest("hex")

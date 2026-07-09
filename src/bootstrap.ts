@@ -5,7 +5,7 @@ import { Sandbox } from "e2b"
 
 import type { NormalizedE2BWorkspaceConfig, PluginLogger } from "./types.js"
 import { sandboxBaseUrl, sandboxTargetHeaders } from "./e2b.js"
-import { shellSingleQuote } from "./shared.js"
+import { errorMessage, shellSingleQuote } from "./shared.js"
 import { BOOTSTRAP_READY_MARKER, RUNTIME_ENV_FILE } from "./template.js"
 
 const SYSTEMD_SERVICE_NAME = "opencode-e2b.service"
@@ -35,6 +35,68 @@ export async function bootstrapWorkspace(params: {
   await signalBootstrapReady(params.sandbox, params.logger)
   await waitForServerReady(params.sandbox, params.config, params.logger)
   await waitForSyncReady(params.sandbox, params.config, params.logger)
+}
+
+/**
+ * Bring a *resumed* sandbox back to life. `Sandbox.connect()` resumes the E2B VM,
+ * but `opencode serve` may not be answering (a filesystem-only pause cold-boots the
+ * VM, so the process is gone). Probe once; if unreachable, restart the systemd
+ * service and wait for health. With `checkSync` also gate on the sync endpoints.
+ * Returns true when reachable, false if it could not be revived.
+ */
+export async function reviveResumedSandbox(params: {
+  sandbox: Sandbox
+  config: NormalizedE2BWorkspaceConfig
+  logger?: PluginLogger
+  checkSync?: boolean
+}): Promise<boolean> {
+  const { sandbox, config, logger, checkSync = false } = params
+
+  if (!(await isServerReachable(sandbox, config))) {
+    await logger?.warn("resumed sandbox server not ready; restarting opencode service", {
+      sandboxID: sandbox.sandboxId,
+    })
+    try {
+      await runCheckedCommand(sandbox, `sudo systemctl restart ${SYSTEMD_SERVICE_NAME}`)
+      await waitForServerReady(sandbox, config, logger)
+    } catch (error) {
+      await logger?.warn("resumed sandbox could not be revived", {
+        sandboxID: sandbox.sandboxId,
+        error: errorMessage(error),
+      })
+      return false
+    }
+  }
+
+  if (checkSync) {
+    try {
+      await waitForSyncReady(sandbox, config, logger)
+    } catch (error) {
+      await logger?.warn("resumed sandbox sync endpoints not ready", {
+        sandboxID: sandbox.sandboxId,
+        error: errorMessage(error),
+      })
+      return false
+    }
+  }
+  return true
+}
+
+/** Single fast readiness probe (no retries). */
+async function isServerReachable(sandbox: Sandbox, config: NormalizedE2BWorkspaceConfig): Promise<boolean> {
+  const readyUrl = new URL(config.bootstrap.waitForPath, sandboxBaseUrl(sandbox, config))
+  let response: Response | undefined
+  try {
+    response = await fetch(readyUrl, {
+      headers: sandboxTargetHeaders(sandbox, config),
+      signal: AbortSignal.timeout(1_500),
+    })
+    return response.ok
+  } catch {
+    return false
+  } finally {
+    if (response && !response.bodyUsed) await response.body?.cancel().catch(() => {})
+  }
 }
 
 async function runBootstrapCommands(

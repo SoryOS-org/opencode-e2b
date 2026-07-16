@@ -28,7 +28,12 @@ test("normalizeOptions applies stable defaults", () => {
     ".cache",
     ".DS_Store",
   ])
-  assert.deepEqual(config.flags, ["sync:local-snapshot-upload", "repo:git-init", "install:node-base"])
+  assert.deepEqual(config.flags, [
+    "sync:local-snapshot-upload",
+    "repo:git-init",
+    "install:node-base",
+    "fs:mirror-local-path",
+  ])
 })
 
 test("validatePluginOptions reports all invalid fields in one pass", () => {
@@ -137,5 +142,10 @@ test("normalizeOptions does not flag prepare commands as a compatibility feature
     },
   })
 
-  assert.deepEqual(config.flags, ["sync:local-snapshot-upload", "repo:git-init", "install:node-base"])
+  assert.deepEqual(config.flags, [
+    "sync:local-snapshot-upload",
+    "repo:git-init",
+    "install:node-base",
+    "fs:mirror-local-path",
+  ])
 })

@@ -203,7 +203,15 @@ function readPersistedExtra(info: WorkspaceInfo): PersistedWorkspaceExtra | unde
 }
 
 function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">): string[] {
-  const flags = new Set<string>(["sync:local-snapshot-upload", "repo:git-init", "install:node-base"])
+  const flags = new Set<string>([
+    "sync:local-snapshot-upload",
+    "repo:git-init",
+    "install:node-base",
+    // Bootstrap mirrors the local project path into the sandbox (buildMirrorPathCommands).
+    // Bumping this flag forces sandboxes provisioned before the mirror change — which are only
+    // ever reused, never re-bootstrapped — to be treated as incompatible and replaced.
+    "fs:mirror-local-path",
+  ])
 
   return [...flags]
 }

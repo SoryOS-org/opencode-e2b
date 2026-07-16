@@ -70,9 +70,17 @@ export function buildBootstrapCommand(
 
 // sudo because the local path may live outside $HOME (e.g. macOS `/Users/...`).
 function buildMirrorPathCommands(localDirectory: string | undefined, projectPath: string): string[] {
-  if (!localDirectory || localDirectory === projectPath) return []
-  const parent = posix.dirname(localDirectory)
-  const commands = [`sudo ln -sfn ${shellSingleQuote(projectPath)} ${shellSingleQuote(localDirectory)}`]
+  if (!localDirectory) return []
+  // Normalize before comparing: a trailing-slash variant of projectPath would
+  // otherwise plant a self-referential symlink inside the repo, and mirroring
+  // an ancestor/descendant of projectPath makes `ln` replace a real directory
+  // (failing the whole provision) or shadow part of the project tree.
+  const local = posix.normalize(localDirectory).replace(/\/+$/, "") || "/"
+  const project = posix.normalize(projectPath).replace(/\/+$/, "") || "/"
+  if (local === project || local === "/") return []
+  if (project.startsWith(`${local}/`) || local.startsWith(`${project}/`)) return []
+  const parent = posix.dirname(local)
+  const commands = [`sudo ln -sfn ${shellSingleQuote(project)} ${shellSingleQuote(local)}`]
   if (parent && parent !== "." && parent !== "/") {
     commands.unshift(`sudo mkdir -p ${shellSingleQuote(parent)}`)
   }

@@ -99,6 +99,40 @@ test("buildBootstrapCommand skips the mirror when local path equals the project 
   assert.doesNotMatch(command, /ln -sfn/)
 })
 
+test("buildBootstrapCommand skips the mirror for a trailing-slash variant of the project path", () => {
+  // Not string-equal to projectPath, but the same directory: a mirror here
+  // would plant a self-referential symlink inside the repo before git init.
+  const command = buildBootstrapCommand(
+    { id: "workspace-123", projectID: "project-456", branch: "main" },
+    normalizeOptions({ projectPath: "/home/user/project" }),
+    "/home/user/project/",
+  )
+
+  assert.doesNotMatch(command, /ln -sfn/)
+})
+
+test("buildBootstrapCommand skips the mirror when the local path is an ancestor of the project path", () => {
+  // `ln -sfn <project> <ancestor>` would try to replace the freshly uploaded
+  // project directory and abort the provision ("Is a directory").
+  const command = buildBootstrapCommand(
+    { id: "workspace-123", projectID: "project-456", branch: "main" },
+    normalizeOptions({ projectPath: "/home/user/project" }),
+    "/home/user",
+  )
+
+  assert.doesNotMatch(command, /ln -sfn/)
+})
+
+test("buildBootstrapCommand skips the mirror when the local path is inside the project path", () => {
+  const command = buildBootstrapCommand(
+    { id: "workspace-123", projectID: "project-456", branch: "main" },
+    normalizeOptions({ projectPath: "/home/user/project" }),
+    "/home/user/project/packages/app",
+  )
+
+  assert.doesNotMatch(command, /ln -sfn/)
+})
+
 test("bootstrapWorkspace releases the systemd opencode service with a marker", async () => {
   const originalFetch = globalThis.fetch
   const commandRuns = []

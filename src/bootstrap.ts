@@ -156,9 +156,7 @@ async function waitForServerReady(
     } catch {
       // Retry transient startup failures until the readiness timeout expires.
     } finally {
-      if (response && !response.bodyUsed) {
-        await response.body?.cancel().catch(() => {})
-      }
+      await cancelUnusedBody(response)
     }
 
     if (ready) {
@@ -238,9 +236,7 @@ async function probeEventStream(url: URL, headers: HeadersInit | undefined): Pro
       throw new Error(`event stream returned ${contentType}`)
     }
   } finally {
-    if (response && !response.bodyUsed) {
-      await response.body?.cancel().catch(() => {})
-    }
+    await cancelUnusedBody(response)
   }
 }
 
@@ -258,9 +254,17 @@ async function probeSyncHistory(url: URL, headers: HeadersInit | undefined): Pro
     })
     if (!response.ok) throw new Error(`sync history returned HTTP ${response.status}`)
   } finally {
-    if (response && !response.bodyUsed) {
-      await response.body?.cancel().catch(() => {})
-    }
+    await cancelUnusedBody(response)
+  }
+}
+
+/**
+ * Cancel a fetch response body that was never read, so a probe cannot leave a
+ * streaming response open. Safe to call with an undefined or already-used body.
+ */
+async function cancelUnusedBody(response: Response | undefined): Promise<void> {
+  if (response && !response.bodyUsed) {
+    await response.body?.cancel().catch(() => {})
   }
 }
 

@@ -10,7 +10,7 @@ import type {
 import { DEFAULT_TEMPLATE_GC_COOLDOWN_MS, DEFAULT_TEMPLATE_GC_TTL_MS, MIN_TEMPLATE_GC_TTL_MS } from "./gc.js"
 
 export { validatePluginOptions } from "./config-validate.js"
-import { containsControlCharacters, isWithinSandboxProjectRoot, SANDBOX_PROJECT_ROOT } from "./config-validate.js"
+import { absoluteProjectPathIssue } from "./config-validate.js"
 
 export const CURRENT_WORKSPACE_API_VERSION = "1"
 const DEFAULT_NODE_VARIANT = "22-slim"
@@ -236,19 +236,9 @@ function requireTcpPort(value: number | undefined, fieldName: string): number | 
 
 function requireAbsoluteProjectPath(value: string | undefined, fieldName: string): string | undefined {
   if (value === undefined) return undefined
-  if (value.trim() === "") {
-    throw new Error(`Expected ${fieldName} to be a non-empty string`)
-  }
-  if (!value.startsWith("/")) {
-    throw new Error(`Expected ${fieldName} to be an absolute POSIX path`)
-  }
-  // See config-validate.ts: control characters would corrupt the systemd
-  // heredoc the path is baked into.
-  if (containsControlCharacters(value)) {
-    throw new Error(`Expected ${fieldName} to not contain control characters`)
-  }
-  if (!isWithinSandboxProjectRoot(value)) {
-    throw new Error(`Expected ${fieldName} to be within ${SANDBOX_PROJECT_ROOT}`)
+  const issue = absoluteProjectPathIssue(value)
+  if (issue) {
+    throw new Error(`${fieldName} ${issue}`)
   }
   return value
 }

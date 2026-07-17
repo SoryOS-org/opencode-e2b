@@ -1,5 +1,4 @@
-import { posix } from "node:path"
-
+import { normalizePosixPath } from "./shared.js"
 import type { E2BWorkspacePluginOptions } from "./types.js"
 
 /**
@@ -12,11 +11,26 @@ import type { E2BWorkspacePluginOptions } from "./types.js"
 export const SANDBOX_PROJECT_ROOT = "/home/user"
 
 export function isWithinSandboxProjectRoot(absolutePath: string): boolean {
-  let normalized = posix.normalize(absolutePath)
-  if (normalized.length > 1 && normalized.endsWith("/")) {
-    normalized = normalized.slice(0, -1)
-  }
+  const normalized = normalizePosixPath(absolutePath)
   return normalized === SANDBOX_PROJECT_ROOT || normalized.startsWith(`${SANDBOX_PROJECT_ROOT}/`)
+}
+
+/**
+ * Single source of truth for projectPath rules, shared by the error-collecting
+ * validator here and the throwing validator in config.ts. Returns the reason a
+ * non-empty string value is invalid, or undefined when it is acceptable.
+ */
+export function absoluteProjectPathIssue(value: string): string | undefined {
+  if (value.trim() === "") return "must be a non-empty string"
+  if (!value.startsWith("/")) return "must be an absolute POSIX path"
+  // The path is embedded in a single-quoted shell word inside a heredoc
+  // (systemd start script); a control character (e.g. newline) would
+  // terminate the heredoc early and corrupt the generated unit.
+  if (containsControlCharacters(value)) return "must not contain control characters"
+  if (!isWithinSandboxProjectRoot(value)) {
+    return `must be within ${SANDBOX_PROJECT_ROOT} so the project is owned by the sandbox user`
+  }
+  return undefined
 }
 
 export function validatePluginOptions(raw: unknown): E2BWorkspacePluginOptions | undefined {
@@ -134,34 +148,16 @@ function requireAbsoluteProjectPath(value: unknown, fieldName: string, errors: s
     errors.push(`${fieldName} must be a string`)
     return
   }
-  if (value.trim() === "") {
-    errors.push(`${fieldName} must be a non-empty string`)
-    return
-  }
-  if (!value.startsWith("/")) {
-    errors.push(`${fieldName} must be an absolute POSIX path`)
-    return
-  }
-  // The path is embedded in a single-quoted shell word inside a heredoc
-  // (systemd start script); a control character (e.g. newline) would
-  // terminate the heredoc early and corrupt the generated unit.
-  if (containsControlCharacters(value)) {
-    errors.push(`${fieldName} must not contain control characters`)
-    return
-  }
-  if (!isWithinSandboxProjectRoot(value)) {
-    errors.push(
-      `${fieldName} must be within ${SANDBOX_PROJECT_ROOT} so the project is owned by the sandbox user`,
-    )
+  const issue = absoluteProjectPathIssue(value)
+  if (issue) {
+    errors.push(`${fieldName} ${issue}`)
   }
 }
 
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/
+
 export function containsControlCharacters(value: string): boolean {
-  for (const char of value) {
-    const code = char.codePointAt(0) ?? 0
-    if (code < 0x20 || code === 0x7f) return true
-  }
-  return false
+  return CONTROL_CHARACTERS.test(value)
 }
 
 function requireStringArray(value: unknown, fieldName: string, errors: string[]): void {

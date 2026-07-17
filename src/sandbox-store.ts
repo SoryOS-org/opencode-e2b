@@ -7,7 +7,8 @@ import { errorMessage } from "./shared.js"
 import type { PluginLogger } from "./types.js"
 
 const STORE_SCHEMA_VERSION = 1
-const PROVISIONING_LOCK_STALE_MS = 5 * 60 * 1000
+/** Age after which an unfinished provisioning claim may be stolen or cleared. */
+export const PROVISIONING_LOCK_STALE_MS = 5 * 60 * 1000
 
 export type CachedSandboxStatus = "provisioning" | "ready" | "failed"
 

@@ -3,7 +3,7 @@ import { Sandbox, SandboxNotFoundError, type SandboxOpts, type SandboxState } fr
 
 import { createE2BConnectionOptions, isE2BNotFoundError } from "./e2b-sdk.js"
 import { forgetSandboxCompatibility } from "./runtime.js"
-import type { CachedSandboxInput, SandboxStore } from "./sandbox-store.js"
+import { PROVISIONING_LOCK_STALE_MS, type CachedSandboxInput, type SandboxStore } from "./sandbox-store.js"
 import { errorMessage } from "./shared.js"
 import {
   buildManagedBaseTemplateAlias,
@@ -396,10 +396,18 @@ async function removeCachedWorkspaceSandbox(
   }
   if (!cached) return "no-cache"
 
-  // A create that crashed between claiming the provisioning lock and storing
-  // the real sandbox ID leaves the sentinel row behind; it is not a sandbox
-  // ID the API can resolve, so clear it and fall back to the metadata list.
+  // The sentinel row is not a sandbox ID the API can resolve. A FRESH row
+  // means another controller is provisioning right now — deleting its lock
+  // would let that create finish into an orphaned sandbox for a removed
+  // workspace, so fail the remove loudly instead (mirrors the staleness
+  // predicate claimProvisioning uses before stealing a lock). A stale row is
+  // a crashed create; clear it and fall back to the metadata list.
   if (cached.sandboxID === PROVISIONING_LOCK_SANDBOX_ID) {
+    if (Date.now() - cached.updatedAtMs < PROVISIONING_LOCK_STALE_MS) {
+      throw new Error(
+        `Workspace ${info.id} is still being provisioned; retry the removal once provisioning finishes`,
+      )
+    }
     await deleteCachedSandbox(store, info.id, cached.sandboxID, logger)
     return "not-found"
   }

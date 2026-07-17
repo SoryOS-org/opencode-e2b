@@ -43,6 +43,16 @@ const SANDBOX_USER = "user"
 export const RUNTIME_ENV_FILE = "/tmp/.opencode-e2b.env"
 
 const managedTemplatePromises = new Map<string, Promise<string>>()
+
+/**
+ * Drop a cached alias resolution. Needed when the template disappears after
+ * being resolved (template GC — possibly in another controller process — or
+ * manual deletion in the E2B dashboard), so the next ensure re-checks and
+ * rebuilds instead of handing out a deleted alias until process restart.
+ */
+export function forgetManagedTemplate(alias: string): void {
+  managedTemplatePromises.delete(alias)
+}
 const MANAGED_TEMPLATE_READY_TIMEOUT_MS = 30 * 60 * 1000
 const MANAGED_TEMPLATE_READY_POLL_MS = 5 * 1000
 const MANAGED_TEMPLATE_READY_MAX_POLL_MS = 30 * 1000

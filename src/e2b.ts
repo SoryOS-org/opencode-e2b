@@ -1,7 +1,7 @@
 import type { WorkspaceInfo } from "@opencode-ai/plugin"
 import { Sandbox, SandboxNotFoundError, type SandboxOpts, type SandboxState } from "e2b"
 
-import { createE2BConnectionOptions } from "./e2b-sdk.js"
+import { createE2BConnectionOptions, isE2BNotFoundError } from "./e2b-sdk.js"
 import { forgetSandboxCompatibility } from "./runtime.js"
 import type { CachedSandboxInput, SandboxStore } from "./sandbox-store.js"
 import { errorMessage } from "./shared.js"
@@ -9,6 +9,7 @@ import {
   buildPrebuiltOpenCodeTemplateName,
   ensureManagedBaseTemplate,
   ensureManagedWorkspaceTemplate,
+  forgetManagedTemplate,
 } from "./template.js"
 import type {
   NormalizedE2BWorkspaceConfig,
@@ -76,36 +77,52 @@ export async function createWorkspaceSandbox(
     serverPort: config.serverPort,
   }
   const publishedBaseTemplate = buildPrebuiltOpenCodeTemplateName(runtimeVersion)
-  let managedTemplate: string
 
   // Do not preflight this with Template.getTags: E2B cannot call get_tags
   // across teams, so published templates must be tried directly and handled
   // through the build failure path.
-  try {
-    managedTemplate = await ensureManagedWorkspaceTemplate(
-      {
-        ...workspaceTemplateInputs,
-        baseTemplate: publishedBaseTemplate,
-      },
-      logger,
-    )
-  } catch (error) {
-    await logger?.warn("published opencode base template failed; building managed base template", {
-      template: publishedBaseTemplate,
-      runtimeVersion,
-      error: errorMessage(error),
-    })
-    const managedBaseTemplate = await ensureManagedBaseTemplate(templateInputs, logger)
-    managedTemplate = await ensureManagedWorkspaceTemplate(
-      {
-        ...workspaceTemplateInputs,
-        baseTemplate: managedBaseTemplate,
-      },
-      logger,
-    )
+  const resolveManagedTemplate = async (): Promise<string> => {
+    try {
+      return await ensureManagedWorkspaceTemplate(
+        {
+          ...workspaceTemplateInputs,
+          baseTemplate: publishedBaseTemplate,
+        },
+        logger,
+      )
+    } catch (error) {
+      await logger?.warn("published opencode base template failed; building managed base template", {
+        template: publishedBaseTemplate,
+        runtimeVersion,
+        error: errorMessage(error),
+      })
+      const managedBaseTemplate = await ensureManagedBaseTemplate(templateInputs, logger)
+      return ensureManagedWorkspaceTemplate(
+        {
+          ...workspaceTemplateInputs,
+          baseTemplate: managedBaseTemplate,
+        },
+        logger,
+      )
+    }
   }
 
-  return Sandbox.create(managedTemplate, sandboxOptions)
+  const managedTemplate = await resolveManagedTemplate()
+  try {
+    return await Sandbox.create(managedTemplate, sandboxOptions)
+  } catch (error) {
+    // The alias resolution is cached in-process, but the template may have
+    // been deleted since (template GC — possibly by another controller — or
+    // manually). Drop the cached alias, re-ensure, and retry once.
+    if (!isE2BNotFoundError(error)) throw error
+    await logger?.warn("managed template disappeared; rebuilding", {
+      alias: managedTemplate,
+      error: errorMessage(error),
+    })
+    forgetManagedTemplate(managedTemplate)
+    const rebuiltTemplate = await resolveManagedTemplate()
+    return Sandbox.create(rebuiltTemplate, sandboxOptions)
+  }
 }
 
 function buildSandboxCreateOptions(

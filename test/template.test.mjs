@@ -15,6 +15,7 @@ import {
   buildSystemdStartScript,
   buildSystemdUnitContent,
   ensureManagedWorkspaceTemplate,
+  forgetManagedTemplate,
   MANAGED_TEMPLATE_PREFIX,
   RUNTIME_ENV_FILE,
 } from "../dist/template.js"
@@ -164,6 +165,58 @@ test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
 
     assert.equal(template, alias)
     assert.deepEqual(calls, [
+      ["fetch", "GET"],
+      ["build", alias],
+    ])
+  } finally {
+    restoreTestEnv(originalApiKey)
+    clearApiFetchHandler()
+    Template.getTags = originalGetTags
+    Template.build = originalBuild
+  }
+})
+
+test("forgetManagedTemplate drops the cached alias so ensure re-resolves", async () => {
+  const originalApiKey = process.env.E2B_API_KEY
+  const originalGetTags = Template.getTags
+  const originalBuild = Template.build
+  const calls = []
+  const inputs = {
+    ...baseInputs,
+    runtimeVersion: "9.8.5",
+    pluginPackageVersion: "forget-cache-test",
+  }
+  const alias = buildManagedWorkspaceTemplateAlias(inputs)
+
+  process.env.E2B_API_KEY = FAKE_E2B_API_KEY
+  Template.getTags = async () => {
+    throw new Error("managed template lookup should not call getTags")
+  }
+  setApiFetchHandler(async (input, init) => {
+    const method = init?.method ?? input.method ?? "GET"
+    calls.push(["fetch", method])
+    return jsonResponse([])
+  })
+  Template.build = async (_template, name) => {
+    calls.push(["build", name])
+  }
+
+  try {
+    assert.equal(await ensureManagedWorkspaceTemplate(inputs), alias)
+    // Second ensure is served from the in-process cache: no new fetch/build.
+    assert.equal(await ensureManagedWorkspaceTemplate(inputs), alias)
+    assert.deepEqual(calls, [
+      ["fetch", "GET"],
+      ["build", alias],
+    ])
+
+    // After the template disappears (GC / manual delete), forgetting the alias
+    // must force a fresh lookup + rebuild instead of reusing the dead alias.
+    forgetManagedTemplate(alias)
+    assert.equal(await ensureManagedWorkspaceTemplate(inputs), alias)
+    assert.deepEqual(calls, [
+      ["fetch", "GET"],
+      ["build", alias],
       ["fetch", "GET"],
       ["build", alias],
     ])

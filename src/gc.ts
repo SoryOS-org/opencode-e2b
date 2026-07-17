@@ -9,7 +9,7 @@ import {
   templateCandidateNames,
 } from "./e2b-sdk.js"
 import { errorMessage } from "./shared.js"
-import { MANAGED_TEMPLATE_PREFIX } from "./template.js"
+import { forgetManagedTemplate, MANAGED_TEMPLATE_PREFIX } from "./template.js"
 import type { E2BTemplateGCOptions, PluginLogger } from "./types.js"
 
 export const DEFAULT_TEMPLATE_GC_TTL_MS = 72 * 60 * 60 * 1000
@@ -163,6 +163,9 @@ async function deleteTemplate(
 ): Promise<boolean> {
   try {
     await deleteE2BTemplate(client, candidate.entry.templateID)
+    // Drop this process's cached alias resolution so the next create
+    // re-ensures the template instead of spawning from the deleted alias.
+    forgetManagedTemplate(candidate.alias)
     await logger?.info("template gc deleted", {
       templateID: candidate.entry.templateID,
       alias: candidate.alias,

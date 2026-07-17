@@ -384,6 +384,14 @@ async function removeCachedWorkspaceSandbox(
   }
   if (!cached) return "no-cache"
 
+  // A create that crashed between claiming the provisioning lock and storing
+  // the real sandbox ID leaves the sentinel row behind; it is not a sandbox
+  // ID the API can resolve, so clear it and fall back to the metadata list.
+  if (cached.sandboxID === PROVISIONING_LOCK_SANDBOX_ID) {
+    await deleteCachedSandbox(store, info.id, cached.sandboxID, logger)
+    return "not-found"
+  }
+
   let sandbox
   try {
     sandbox = await Sandbox.connect(cached.sandboxID, {

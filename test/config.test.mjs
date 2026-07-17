@@ -156,10 +156,7 @@ test("normalizeOptions does not flag prepare commands as a compatibility feature
     },
   })
 
-  assert.deepEqual(config.flags, [
-    "sync:local-snapshot-upload",
-    "repo:git-init",
-    "install:node-base",
-    "fs:mirror-local-path",
-  ])
+  // The intent is only that prepareCommands must not ALTER the flag set; the
+  // literal default list is asserted once, in the defaults test above.
+  assert.deepEqual(config.flags, normalizeOptions().flags)
 })

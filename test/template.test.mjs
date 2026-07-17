@@ -1,8 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "bun:test"
 
-import { Template } from "e2b"
-
 import {
   BOOTSTRAP_READY_MARKER,
   buildManagedBaseTemplateAlias,
@@ -19,8 +17,8 @@ import {
   MANAGED_TEMPLATE_PREFIX,
   RUNTIME_ENV_FILE,
 } from "../dist/template.js"
-import { clearApiFetchHandler, installApiFetchShim, setApiFetchHandler } from "./helpers/api-fetch-mock.mjs"
-import { FAKE_E2B_API_KEY } from "./helpers/fixtures.mjs"
+import { installApiFetchShim } from "./helpers/api-fetch-mock.mjs"
+import { jsonResponse, withTemplateApiMocks } from "./helpers/template-api-mock.mjs"
 
 installApiFetchShim()
 
@@ -136,30 +134,13 @@ test("buildSystemdStartCommand starts the service and streams opencode logs", ()
 })
 
 test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
-  const originalApiKey = process.env.E2B_API_KEY
-  const originalGetTags = Template.getTags
-  const originalBuild = Template.build
-  const calls = []
   const inputs = {
     ...baseInputs,
     runtimeVersion: "9.8.6",
     pluginPackageVersion: "fallback-test",
   }
 
-  process.env.E2B_API_KEY = FAKE_E2B_API_KEY
-  Template.getTags = async () => {
-    throw new Error("managed template lookup should not call getTags")
-  }
-  setApiFetchHandler(async (input, init) => {
-    const method = init?.method ?? input.method ?? "GET"
-    calls.push(["fetch", method])
-    return jsonResponse([])
-  })
-  Template.build = async (_template, name) => {
-    calls.push(["build", name])
-  }
-
-  try {
+  await withTemplateApiMocks(async (calls) => {
     const template = await ensureManagedWorkspaceTemplate(inputs)
     const alias = buildManagedWorkspaceTemplateAlias(inputs)
 
@@ -168,19 +149,10 @@ test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
       ["fetch", "GET"],
       ["build", alias],
     ])
-  } finally {
-    restoreTestEnv(originalApiKey)
-    clearApiFetchHandler()
-    Template.getTags = originalGetTags
-    Template.build = originalBuild
-  }
+  })
 })
 
 test("forgetManagedTemplate drops the cached alias so ensure re-resolves", async () => {
-  const originalApiKey = process.env.E2B_API_KEY
-  const originalGetTags = Template.getTags
-  const originalBuild = Template.build
-  const calls = []
   const inputs = {
     ...baseInputs,
     runtimeVersion: "9.8.5",
@@ -188,20 +160,7 @@ test("forgetManagedTemplate drops the cached alias so ensure re-resolves", async
   }
   const alias = buildManagedWorkspaceTemplateAlias(inputs)
 
-  process.env.E2B_API_KEY = FAKE_E2B_API_KEY
-  Template.getTags = async () => {
-    throw new Error("managed template lookup should not call getTags")
-  }
-  setApiFetchHandler(async (input, init) => {
-    const method = init?.method ?? input.method ?? "GET"
-    calls.push(["fetch", method])
-    return jsonResponse([])
-  })
-  Template.build = async (_template, name) => {
-    calls.push(["build", name])
-  }
-
-  try {
+  await withTemplateApiMocks(async (calls) => {
     assert.equal(await ensureManagedWorkspaceTemplate(inputs), alias)
     // Second ensure is served from the in-process cache: no new fetch/build.
     assert.equal(await ensureManagedWorkspaceTemplate(inputs), alias)
@@ -220,19 +179,10 @@ test("forgetManagedTemplate drops the cached alias so ensure re-resolves", async
       ["fetch", "GET"],
       ["build", alias],
     ])
-  } finally {
-    restoreTestEnv(originalApiKey)
-    clearApiFetchHandler()
-    Template.getTags = originalGetTags
-    Template.build = originalBuild
-  }
+  })
 })
 
 test("ensureManagedWorkspaceTemplate deletes errored managed templates before rebuilding", async () => {
-  const originalApiKey = process.env.E2B_API_KEY
-  const originalGetTags = Template.getTags
-  const originalBuild = Template.build
-  const calls = []
   const inputs = {
     ...baseInputs,
     runtimeVersion: "9.8.4",
@@ -240,51 +190,38 @@ test("ensureManagedWorkspaceTemplate deletes errored managed templates before re
   }
   const alias = buildManagedTemplateAlias(inputs)
 
-  process.env.E2B_API_KEY = FAKE_E2B_API_KEY
-  Template.getTags = async () => {
-    throw new Error("managed template lookup should not call getTags")
-  }
-  Template.build = async (_template, name) => {
-    calls.push(["build", name])
-  }
-  setApiFetchHandler(async (input, init) => {
-    const method = init?.method ?? input.method ?? "GET"
-    calls.push(["fetch", method])
-    if (method === "DELETE") {
-      return jsonResponse({})
-    }
-    return jsonResponse([
-      {
-        templateID: "template-failed",
-        names: [alias],
-        aliases: [],
-        buildStatus: "error",
+  await withTemplateApiMocks(
+    async (calls) => {
+      const template = await ensureManagedWorkspaceTemplate(inputs)
+
+      assert.equal(template, alias)
+      assert.deepEqual(calls, [
+        ["fetch", "GET"],
+        ["fetch", "DELETE"],
+        ["build", alias],
+      ])
+    },
+    {
+      fetch: (calls) => async (input, init) => {
+        const method = init?.method ?? input.method ?? "GET"
+        calls.push(["fetch", method])
+        if (method === "DELETE") {
+          return jsonResponse({})
+        }
+        return jsonResponse([
+          {
+            templateID: "template-failed",
+            names: [alias],
+            aliases: [],
+            buildStatus: "error",
+          },
+        ])
       },
-    ])
-  })
-
-  try {
-    const template = await ensureManagedWorkspaceTemplate(inputs)
-
-    assert.equal(template, alias)
-    assert.deepEqual(calls, [
-      ["fetch", "GET"],
-      ["fetch", "DELETE"],
-      ["build", alias],
-    ])
-  } finally {
-    restoreTestEnv(originalApiKey)
-    clearApiFetchHandler()
-    Template.getTags = originalGetTags
-    Template.build = originalBuild
-  }
+    },
+  )
 })
 
 test("ensureManagedWorkspaceTemplate waits for in-progress managed templates", async () => {
-  const originalApiKey = process.env.E2B_API_KEY
-  const originalGetTags = Template.getTags
-  const originalBuild = Template.build
-  const calls = []
   const inputs = {
     ...baseInputs,
     runtimeVersion: "9.8.3",
@@ -293,59 +230,36 @@ test("ensureManagedWorkspaceTemplate waits for in-progress managed templates", a
   const alias = buildManagedTemplateAlias(inputs)
   const statuses = ["building", "ready"]
 
-  process.env.E2B_API_KEY = FAKE_E2B_API_KEY
-  Template.getTags = async () => {
-    throw new Error("managed template lookup should not call getTags")
-  }
-  Template.build = async () => {
-    throw new Error("managed template build should not run while another build is pending")
-  }
-  setApiFetchHandler(async (input, init) => {
-    const method = init?.method ?? input.method ?? "GET"
-    const buildStatus = statuses.shift() ?? "ready"
-    calls.push(["fetch", method, buildStatus])
-    return jsonResponse([
-      {
-        templateID: "template-pending",
-        names: [alias],
-        aliases: [],
-        buildStatus,
-      },
-    ])
-  })
+  await withTemplateApiMocks(
+    async (calls) => {
+      const template = await ensureManagedWorkspaceTemplate(inputs)
 
-  try {
-    const template = await ensureManagedWorkspaceTemplate(inputs)
-
-    assert.equal(template, alias)
-    assert.deepEqual(calls, [
-      ["fetch", "GET", "building"],
-      ["fetch", "GET", "ready"],
-    ])
-  } finally {
-    restoreTestEnv(originalApiKey)
-    clearApiFetchHandler()
-    Template.getTags = originalGetTags
-    Template.build = originalBuild
-  }
-})
-
-function jsonResponse(data) {
-  return new Response(JSON.stringify(data), {
-    status: 200,
-    headers: {
-      "content-type": "application/json",
+      assert.equal(template, alias)
+      assert.deepEqual(calls, [
+        ["fetch", "GET", "building"],
+        ["fetch", "GET", "ready"],
+      ])
     },
-  })
-}
-
-function restoreTestEnv(originalApiKey) {
-  if (originalApiKey === undefined) {
-    delete process.env.E2B_API_KEY
-  } else {
-    process.env.E2B_API_KEY = originalApiKey
-  }
-}
+    {
+      build: () => async () => {
+        throw new Error("managed template build should not run while another build is pending")
+      },
+      fetch: (calls) => async (input, init) => {
+        const method = init?.method ?? input.method ?? "GET"
+        const buildStatus = statuses.shift() ?? "ready"
+        calls.push(["fetch", method, buildStatus])
+        return jsonResponse([
+          {
+            templateID: "template-pending",
+            names: [alias],
+            aliases: [],
+            buildStatus,
+          },
+        ])
+      },
+    },
+  )
+})
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")

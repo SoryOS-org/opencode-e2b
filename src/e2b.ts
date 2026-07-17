@@ -6,6 +6,7 @@ import { forgetSandboxCompatibility } from "./runtime.js"
 import type { CachedSandboxInput, SandboxStore } from "./sandbox-store.js"
 import { errorMessage } from "./shared.js"
 import {
+  buildManagedBaseTemplateAlias,
   buildPrebuiltOpenCodeTemplateName,
   ensureManagedBaseTemplate,
   ensureManagedWorkspaceTemplate,
@@ -80,46 +81,57 @@ export async function createWorkspaceSandbox(
 
   // Do not preflight this with Template.getTags: E2B cannot call get_tags
   // across teams, so published templates must be tried directly and handled
-  // through the build failure path.
+  // through the build failure path. Once the published base has failed for
+  // this create, later resolutions (the not-found retry) skip straight to the
+  // managed base instead of re-paying the doomed attempt.
+  let publishedBaseFailed = false
   const resolveManagedTemplate = async (): Promise<string> => {
-    try {
-      return await ensureManagedWorkspaceTemplate(
-        {
-          ...workspaceTemplateInputs,
-          baseTemplate: publishedBaseTemplate,
-        },
-        logger,
-      )
-    } catch (error) {
-      await logger?.warn("published opencode base template failed; building managed base template", {
-        template: publishedBaseTemplate,
-        runtimeVersion,
-        error: errorMessage(error),
-      })
-      const managedBaseTemplate = await ensureManagedBaseTemplate(templateInputs, logger)
-      return ensureManagedWorkspaceTemplate(
-        {
-          ...workspaceTemplateInputs,
-          baseTemplate: managedBaseTemplate,
-        },
-        logger,
-      )
+    if (!publishedBaseFailed) {
+      try {
+        return await ensureManagedWorkspaceTemplate(
+          {
+            ...workspaceTemplateInputs,
+            baseTemplate: publishedBaseTemplate,
+          },
+          logger,
+        )
+      } catch (error) {
+        publishedBaseFailed = true
+        await logger?.warn("published opencode base template failed; building managed base template", {
+          template: publishedBaseTemplate,
+          runtimeVersion,
+          error: errorMessage(error),
+        })
+      }
     }
+    const managedBaseTemplate = await ensureManagedBaseTemplate(templateInputs, logger)
+    return ensureManagedWorkspaceTemplate(
+      {
+        ...workspaceTemplateInputs,
+        baseTemplate: managedBaseTemplate,
+      },
+      logger,
+    )
   }
 
   const managedTemplate = await resolveManagedTemplate()
   try {
     return await Sandbox.create(managedTemplate, sandboxOptions)
   } catch (error) {
-    // The alias resolution is cached in-process, but the template may have
+    // The alias resolutions are cached in-process, but the templates may have
     // been deleted since (template GC — possibly by another controller — or
-    // manually). Drop the cached alias, re-ensure, and retry once.
+    // manually). Drop both cached aliases (the workspace template AND the
+    // managed base it may build from), re-ensure, and retry once. A 404 here
+    // could also be unrelated to templates; the retry is cheap in that case
+    // (the re-ensure short-circuits on a still-listed template) and the real
+    // error propagates from the second create.
     if (!isE2BNotFoundError(error)) throw error
-    await logger?.warn("managed template disappeared; rebuilding", {
+    await logger?.warn("Sandbox.create returned 404; assuming the managed template was deleted and rebuilding once", {
       alias: managedTemplate,
       error: errorMessage(error),
     })
     forgetManagedTemplate(managedTemplate)
+    forgetManagedTemplate(buildManagedBaseTemplateAlias(templateInputs))
     const rebuiltTemplate = await resolveManagedTemplate()
     return Sandbox.create(rebuiltTemplate, sandboxOptions)
   }

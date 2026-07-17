@@ -1,6 +1,6 @@
 import type { PluginInput, WorkspaceInfo } from "@opencode-ai/plugin"
 
-import { bootstrapWorkspace } from "./bootstrap.js"
+import { bootstrapWorkspace, ensureMirroredLocalPath } from "./bootstrap.js"
 import { buildFreshCompatibility, resolveWorkspaceCompatibility, resolveWorkspaceConfig } from "./config.js"
 import {
   buildWorkspaceSandboxMetadata,
@@ -101,6 +101,16 @@ export async function createWorkspace(params: {
           workspaceID: params.info.id,
           sandboxID: plan.sandboxId,
         })
+        // Reuse skips bootstrap, but the mirror commands are idempotent, so
+        // re-run them: sandboxes provisioned before the mirror existed (or
+        // before the local project moved) pick up the symlink here instead of
+        // requiring a destructive replace.
+        await ensureMirroredLocalPath(
+          existingRecord.sandbox,
+          params.localDirectory,
+          config.projectPath,
+          params.logger,
+        )
         return
       }
 

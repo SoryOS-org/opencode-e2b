@@ -5,7 +5,7 @@ import { Sandbox } from "e2b"
 
 import type { NormalizedE2BWorkspaceConfig, PluginLogger } from "./types.js"
 import { sandboxBaseUrl, sandboxTargetHeaders } from "./e2b.js"
-import { shellSingleQuote } from "./shared.js"
+import { normalizePosixPath, shellSingleQuote } from "./shared.js"
 import { BOOTSTRAP_READY_MARKER, RUNTIME_ENV_FILE } from "./template.js"
 
 const SYSTEMD_SERVICE_NAME = "opencode-e2b.service"
@@ -68,6 +68,31 @@ export function buildBootstrapCommand(
   return commands.join(" && ")
 }
 
+/**
+ * Make the local project path resolvable inside a sandbox by (re)creating the
+ * mirror symlink. The commands are idempotent (`mkdir -p` + `ln -sfn`), so
+ * this is safe to run on every reuse — it is how sandboxes provisioned before
+ * the mirror existed (or before the local project moved) pick it up without a
+ * destructive replace.
+ */
+export async function ensureMirroredLocalPath(
+  sandbox: Sandbox,
+  localDirectory: string | undefined,
+  projectPath: string,
+  logger?: PluginLogger,
+): Promise<void> {
+  const commands = buildMirrorPathCommands(localDirectory, projectPath)
+  if (commands.length === 0) {
+    if (localDirectory && localDirectory !== projectPath) {
+      // Nested or root paths are deliberately not mirrored; say so instead of
+      // leaving a warped session's ENOENT unexplained.
+      await logger?.warn("local path mirror skipped", { localDirectory, projectPath })
+    }
+    return
+  }
+  await runCheckedCommand(sandbox, commands.join(" && "))
+}
+
 // sudo because the local path may live outside $HOME (e.g. macOS `/Users/...`).
 function buildMirrorPathCommands(localDirectory: string | undefined, projectPath: string): string[] {
   if (!localDirectory) return []
@@ -75,8 +100,8 @@ function buildMirrorPathCommands(localDirectory: string | undefined, projectPath
   // otherwise plant a self-referential symlink inside the repo, and mirroring
   // an ancestor/descendant of projectPath makes `ln` replace a real directory
   // (failing the whole provision) or shadow part of the project tree.
-  const local = posix.normalize(localDirectory).replace(/\/+$/, "") || "/"
-  const project = posix.normalize(projectPath).replace(/\/+$/, "") || "/"
+  const local = normalizePosixPath(localDirectory)
+  const project = normalizePosixPath(projectPath)
   if (local === project || local === "/") return []
   if (project.startsWith(`${local}/`) || local.startsWith(`${project}/`)) return []
   const parent = posix.dirname(local)

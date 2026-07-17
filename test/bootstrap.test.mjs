@@ -4,6 +4,7 @@ import { test } from "bun:test"
 import {
   bootstrapWorkspace,
   buildBootstrapCommand,
+  ensureMirroredLocalPath,
   renderRuntimeEnvFile,
   waitForSyncReady,
 } from "../dist/bootstrap.js"
@@ -131,6 +132,53 @@ test("buildBootstrapCommand skips the mirror when the local path is inside the p
   )
 
   assert.doesNotMatch(command, /ln -sfn/)
+})
+
+test("ensureMirroredLocalPath re-runs the idempotent mirror commands on a sandbox", async () => {
+  const commandRuns = []
+  const sandbox = {
+    commands: {
+      async run(command) {
+        commandRuns.push(command)
+        return { exitCode: 0, stdout: "", stderr: "" }
+      },
+    },
+  }
+
+  await ensureMirroredLocalPath(sandbox, "/Users/dev/projects/demo", "/home/user/project")
+
+  assert.equal(commandRuns.length, 1)
+  assert.match(commandRuns[0], /sudo mkdir -p '\/Users\/dev\/projects'/)
+  assert.match(commandRuns[0], /sudo ln -sfn '\/home\/user\/project' '\/Users\/dev\/projects\/demo'/)
+})
+
+test("ensureMirroredLocalPath skips equal paths silently and warns on nested paths", async () => {
+  const warns = []
+  const logger = {
+    async info() {},
+    async debug() {},
+    async warn(message, extra) {
+      warns.push([message, extra])
+    },
+    async error() {},
+  }
+  const sandbox = {
+    commands: {
+      async run() {
+        throw new Error("must not run any command")
+      },
+    },
+  }
+
+  // Same directory: nothing to mirror, nothing to warn about.
+  await ensureMirroredLocalPath(sandbox, "/home/user/project", "/home/user/project", logger)
+  assert.equal(warns.length, 0)
+
+  // Nested local path: deliberately unmirrorable — must say so.
+  await ensureMirroredLocalPath(sandbox, "/home/user", "/home/user/project", logger)
+  assert.equal(warns.length, 1)
+  assert.equal(warns[0][0], "local path mirror skipped")
+  assert.deepEqual(warns[0][1], { localDirectory: "/home/user", projectPath: "/home/user/project" })
 })
 
 test("bootstrapWorkspace releases the systemd opencode service with a marker", async () => {

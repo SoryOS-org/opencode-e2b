@@ -207,9 +207,12 @@ function buildWorkspaceFlags(config: Omit<NormalizedE2BWorkspaceConfig, "flags">
     "sync:local-snapshot-upload",
     "repo:git-init",
     "install:node-base",
-    // Bootstrap mirrors the local project path into the sandbox (buildMirrorPathCommands).
-    // Bumping this flag forces sandboxes provisioned before the mirror change — which are only
-    // ever reused, never re-bootstrapped — to be treated as incompatible and replaced.
+    // Bootstrap mirrors the local project path into the sandbox
+    // (buildMirrorPathCommands). Note this flag only describes freshly
+    // configured workspaces — compatibility compares persisted vs sandbox
+    // flags, and pre-flag workspaces persist the old set on both sides, so
+    // the flag cannot force their replacement. Existing sandboxes get the
+    // mirror via ensureMirroredLocalPath on every reuse instead.
     "fs:mirror-local-path",
   ])
 

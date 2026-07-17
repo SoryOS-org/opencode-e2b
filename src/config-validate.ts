@@ -142,11 +142,26 @@ function requireAbsoluteProjectPath(value: unknown, fieldName: string, errors: s
     errors.push(`${fieldName} must be an absolute POSIX path`)
     return
   }
+  // The path is embedded in a single-quoted shell word inside a heredoc
+  // (systemd start script); a control character (e.g. newline) would
+  // terminate the heredoc early and corrupt the generated unit.
+  if (containsControlCharacters(value)) {
+    errors.push(`${fieldName} must not contain control characters`)
+    return
+  }
   if (!isWithinSandboxProjectRoot(value)) {
     errors.push(
       `${fieldName} must be within ${SANDBOX_PROJECT_ROOT} so the project is owned by the sandbox user`,
     )
   }
+}
+
+export function containsControlCharacters(value: string): boolean {
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0
+    if (code < 0x20 || code === 0x7f) return true
+  }
+  return false
 }
 
 function requireStringArray(value: unknown, fieldName: string, errors: string[]): void {

@@ -94,6 +94,20 @@ test("validatePluginOptions rejects a projectPath outside /home/user", () => {
   )
 })
 
+test("projectPath must not contain control characters", () => {
+  // The path is baked into a single-quoted word inside a heredoc (systemd
+  // start script); a newline would terminate the heredoc and corrupt the unit.
+  assert.throws(
+    () => normalizeOptions({ projectPath: "/home/user/app\nEOF\n" }),
+    /control characters/,
+  )
+  assert.throws(
+    () => validatePluginOptions({ projectPath: "/home/user/app\nEOF\n" }),
+    /projectPath must not contain control characters/,
+  )
+  assert.throws(() => normalizeOptions({ projectPath: "/home/user/app\tdir" }), /control characters/)
+})
+
 test("resolveWorkspaceConfig keeps persisted workspace identity stable", () => {
   const persistedConfig = normalizeOptions({
     nodeVariant: "20-slim",

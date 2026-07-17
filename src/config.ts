@@ -10,7 +10,7 @@ import type {
 import { DEFAULT_TEMPLATE_GC_COOLDOWN_MS, DEFAULT_TEMPLATE_GC_TTL_MS, MIN_TEMPLATE_GC_TTL_MS } from "./gc.js"
 
 export { validatePluginOptions } from "./config-validate.js"
-import { isWithinSandboxProjectRoot, SANDBOX_PROJECT_ROOT } from "./config-validate.js"
+import { containsControlCharacters, isWithinSandboxProjectRoot, SANDBOX_PROJECT_ROOT } from "./config-validate.js"
 
 export const CURRENT_WORKSPACE_API_VERSION = "1"
 const DEFAULT_NODE_VARIANT = "22-slim"
@@ -241,6 +241,11 @@ function requireAbsoluteProjectPath(value: string | undefined, fieldName: string
   }
   if (!value.startsWith("/")) {
     throw new Error(`Expected ${fieldName} to be an absolute POSIX path`)
+  }
+  // See config-validate.ts: control characters would corrupt the systemd
+  // heredoc the path is baked into.
+  if (containsControlCharacters(value)) {
+    throw new Error(`Expected ${fieldName} to not contain control characters`)
   }
   if (!isWithinSandboxProjectRoot(value)) {
     throw new Error(`Expected ${fieldName} to be within ${SANDBOX_PROJECT_ROOT}`)

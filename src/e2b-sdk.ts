@@ -91,8 +91,11 @@ function createE2BSDKLogger(logger?: PluginLogger): E2BLogger | undefined {
   if (!logger) return undefined
 
   return {
+    // The e2b SDK logs every HTTP request/response at info, which dominates the
+    // opencode log (~30% of lines). Map its info/debug down to plugin debug so the
+    // chatter stays below the default info threshold; keep warn/error intact.
     debug: (...args: unknown[]) => writeLog(logger, "debug", args),
-    info: (...args: unknown[]) => writeLog(logger, "info", args),
+    info: (...args: unknown[]) => writeLog(logger, "debug", args),
     warn: (...args: unknown[]) => writeLog(logger, "warn", args),
     error: (...args: unknown[]) => writeLog(logger, "error", args),
   }

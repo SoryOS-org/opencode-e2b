@@ -30,6 +30,12 @@ const SYSTEMD_SERVICE_NAME = "opencode-e2b.service"
 const SYSTEMD_SERVICE_PATH = `/etc/systemd/system/${SYSTEMD_SERVICE_NAME}`
 const SYSTEMD_START_SCRIPT_PATH = "/usr/local/bin/opencode-e2b-start"
 
+// Run opencode as the project-owning user, not root (`User=` is how a systemd
+// service drops root). As root, git's dubious-ownership check rejects the
+// user-owned repo, so opencode can't detect the git project and a warped
+// session's insert fails with a remote FOREIGN KEY error (opaque 500).
+const SANDBOX_USER = "user"
+
 /**
  * E2B's `Sandbox.create({ envs })` only affects later commands, not the
  * template init command, so OpenCode env is delivered through this file.
@@ -416,6 +422,7 @@ export function buildSystemdUnitContent(): string {
     "",
     "[Service]",
     "Type=simple",
+    `User=${SANDBOX_USER}`,
     "Restart=on-failure",
     "RestartSec=1",
     "KillSignal=SIGINT",
@@ -451,7 +458,15 @@ export function buildSystemdStartScript(projectPath: string, serverPort: number)
 export function buildManagedBaseTemplateAlias(inputs: ManagedBaseTemplateInputs): string {
   const readableNodeVariant = normalizeAliasSegment(inputs.nodeVariant).slice(0, 18) || "node"
   const hash = createHash("sha256")
-    .update([inputs.nodeVariant, inputs.runtimeVersion, inputs.pluginPackageVersion].join("\0"))
+    .update(
+      [
+        inputs.nodeVariant,
+        inputs.runtimeVersion,
+        inputs.pluginPackageVersion,
+        // Hash the baked install command too, so changing it produces a new alias and a fresh build.
+        buildOpenCodeInstallCommand(inputs.runtimeVersion),
+      ].join("\0"),
+    )
     .digest("hex")
     .slice(0, 12)
 
@@ -469,6 +484,10 @@ export function buildManagedWorkspaceTemplateAlias(inputs: ManagedWorkspaceTempl
         inputs.projectPath,
         String(inputs.serverPort),
         inputs.pluginPackageVersion,
+        // Hash the baked systemd unit + start command, so a unit change (e.g. User=) yields a
+        // new alias and forces a rebuild instead of reusing a stale template.
+        buildSystemdServiceInstallCommand(inputs.projectPath, inputs.serverPort),
+        buildSystemdStartCommand(),
       ].join("\0"),
     )
     .digest("hex")

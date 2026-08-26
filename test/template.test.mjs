@@ -93,6 +93,11 @@ test("buildSystemdUnitContent points systemd at the opencode start script", () =
   assert.match(unit, /StandardOutput=journal/)
   assert.match(unit, /StandardError=journal/)
   assert.match(unit, /ExecStart=\/usr\/local\/bin\/opencode-e2b-start/)
+  // opencode must run as the project-owning user, not root: as pure root git's
+  // dubious-ownership check rejects the user-owned repo, so opencode falls back
+  // to its "global" project and never registers the uploaded repo — a warped
+  // session's project_id then has no row and the insert fails on a foreign key.
+  assert.match(unit, /User=user/)
 })
 
 test("buildSystemdStartScript gates opencode serve on the bootstrap marker", () => {

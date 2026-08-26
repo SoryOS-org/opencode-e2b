@@ -64,7 +64,8 @@ test("buildBootstrapCommand combines prepare commands and git initialization", (
   assert.equal(
     command,
     [
-      "mkdir -p '/home/user/project'",
+      "sudo mkdir -p '/home/user/project'",
+      "sudo chown -R user:user '/home/user/project'",
       "cd '/home/user/project'",
       "(npm install)",
       "(npm run build)",

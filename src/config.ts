@@ -14,6 +14,33 @@ export { validatePluginOptions } from "./config-validate.js"
 export const CURRENT_WORKSPACE_API_VERSION = "1"
 const DEFAULT_NODE_VARIANT = "22-slim"
 
+/**
+ * Used when the host path cannot be mirrored inside the sandbox (see
+ * `mirroredProjectPath`). Sessions then carry a directory the host cannot
+ * resolve, which is why mirroring is preferred.
+ */
+export const FALLBACK_PROJECT_PATH = "/home/user/project"
+
+/**
+ * The sandbox hosts the project at the host's own path so a session's
+ * directory resolves on both sides — OpenCode canonicalises that directory
+ * with realpath, so a symlink from one to the other collapses back to the
+ * sandbox path and the host is left with a path it cannot open.
+ *
+ * Only POSIX-absolute host paths can be mirrored. A Windows path has no form
+ * that is absolute on both systems: `/home/user/project` is legal on Windows
+ * but resolves against the current drive root, so the host would need a
+ * junction at `C:\` to follow it — not something to create on a user's
+ * machine. Those hosts keep FALLBACK_PROJECT_PATH.
+ */
+export function mirroredProjectPath(localDirectory: string | undefined): string | undefined {
+  if (!localDirectory) return undefined
+  if (!localDirectory.startsWith("/")) return undefined
+  if (localDirectory.includes("\\")) return undefined
+  if (/^\/[A-Za-z]:/.test(localDirectory)) return undefined
+  return localDirectory
+}
+
 const DEFAULT_IGNORE = [
   ".git",
   "node_modules",
@@ -25,7 +52,10 @@ const DEFAULT_IGNORE = [
   ".DS_Store",
 ] as const
 
-export function normalizeOptions(options?: E2BWorkspacePluginOptions): NormalizedE2BWorkspaceConfig {
+export function normalizeOptions(
+  options?: E2BWorkspacePluginOptions,
+  localDirectory?: string,
+): NormalizedE2BWorkspaceConfig {
   const sandboxTimeoutMs =
     requirePositiveInteger(options?.sandboxTimeoutMs, "sandboxTimeoutMs") ?? 60 * 60 * 1000
   const serverPort = requireTcpPort(options?.serverPort, "serverPort") ?? 4096
@@ -44,7 +74,10 @@ export function normalizeOptions(options?: E2BWorkspacePluginOptions): Normalize
     workspaceApiVersion: CURRENT_WORKSPACE_API_VERSION,
     nodeVariant: options?.nodeVariant ?? DEFAULT_NODE_VARIANT,
     sandboxTimeoutMs,
-    projectPath: requireAbsoluteProjectPath(options?.projectPath, "projectPath") ?? "/home/user/project",
+    projectPath:
+      requireAbsoluteProjectPath(options?.projectPath, "projectPath") ??
+      mirroredProjectPath(localDirectory) ??
+      FALLBACK_PROJECT_PATH,
     serverPort,
     secure: options?.secure ?? true,
     network: {
@@ -233,5 +266,10 @@ function requireAbsoluteProjectPath(value: string | undefined, fieldName: string
   if (!value.startsWith("/")) {
     throw new Error(`Expected ${fieldName} to be an absolute POSIX path`)
   }
+  if (value === "/") {
+    throw new Error(`Expected ${fieldName} to not be the filesystem root`)
+  }
+  // See config-validate.ts: ownership is guaranteed by chown in bootstrap, so
+  // projectPath is free to mirror the host path.
   return value
 }

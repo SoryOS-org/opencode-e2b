@@ -63,6 +63,58 @@ test("normalizeOptions validates path and port ranges", () => {
   assert.throws(() => normalizeOptions({ serverPort: 70000 }), /between 1 and 65535/)
 })
 
+test("projectPath defaults to the host directory so the path resolves on both sides", () => {
+  // Mirrored: a POSIX-absolute host path is used verbatim in the sandbox.
+  assert.equal(
+    normalizeOptions(undefined, "/Users/dev/Documents/GitHub/demo").projectPath,
+    "/Users/dev/Documents/GitHub/demo",
+  )
+
+  // An explicit option still wins over the host path.
+  assert.equal(
+    normalizeOptions({ projectPath: "/home/user/custom" }, "/Users/dev/demo").projectPath,
+    "/home/user/custom",
+  )
+
+  // Not mirrorable -> keep the fallback. A Windows path has no form that is
+  // absolute on both systems, so those hosts stay on /home/user/project.
+  for (const unmirrorable of [undefined, "C:\\Users\\dev\\demo", "/C:/Users/dev/demo", "relative/dir"]) {
+    assert.equal(
+      normalizeOptions(undefined, unmirrorable).projectPath,
+      "/home/user/project",
+      `expected fallback for ${unmirrorable}`,
+    )
+  }
+})
+
+test("projectPath accepts any absolute path so it can mirror the host path", () => {
+  // The sandbox project may live at the host's own path, so a session's
+  // directory is valid on both sides (no symlink for realpath to collapse).
+  // Ownership is guaranteed by chown in bootstrap, not by the path location.
+  for (const good of [
+    "/home/user/project",
+    "/home/user",
+    "/Users/dev/Documents/GitHub/demo",
+    "/workspace/app",
+  ]) {
+    assert.equal(normalizeOptions({ projectPath: good }).projectPath, good)
+  }
+
+  // Still rejected: relative paths and the filesystem root.
+  assert.throws(() => normalizeOptions({ projectPath: "relative/project" }), /absolute POSIX path/)
+  assert.throws(() => normalizeOptions({ projectPath: "/" }), /filesystem root/)
+})
+
+test("validatePluginOptions accepts a host-mirroring projectPath but rejects the root", () => {
+  assert.deepEqual(validatePluginOptions({ projectPath: "/Users/dev/demo" }), {
+    projectPath: "/Users/dev/demo",
+  })
+  assert.throws(
+    () => validatePluginOptions({ projectPath: "/" }),
+    /projectPath must not be the filesystem root/,
+  )
+})
+
 test("resolveWorkspaceConfig keeps persisted workspace identity stable", () => {
   const persistedConfig = normalizeOptions({
     nodeVariant: "20-slim",

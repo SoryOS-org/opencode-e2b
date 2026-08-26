@@ -47,7 +47,12 @@ async function runBootstrapCommands(
 export function buildBootstrapCommand(info: WorkspaceInfo, config: NormalizedE2BWorkspaceConfig): string {
   const branch = info.branch ?? "main"
   const commands = [
-    `mkdir -p ${shellSingleQuote(config.projectPath)}`,
+    // sudo + chown: projectPath may mirror the host path (e.g. macOS `/Users/...`),
+    // which lives outside the sandbox user's home. chown is what guarantees the
+    // project is user-owned, so git's dubious-ownership check passes under the
+    // run-as-user service — the path's location no longer implies ownership.
+    `sudo mkdir -p ${shellSingleQuote(config.projectPath)}`,
+    `sudo chown -R user:user ${shellSingleQuote(config.projectPath)}`,
     `cd ${shellSingleQuote(config.projectPath)}`,
     ...config.bootstrap.prepareCommands
       .map((command) => command.trim())

@@ -121,7 +121,14 @@ function requireAbsoluteProjectPath(value: unknown, fieldName: string, errors: s
   }
   if (!value.startsWith("/")) {
     errors.push(`${fieldName} must be an absolute POSIX path`)
+    return
   }
+  if (value === "/") {
+    errors.push(`${fieldName} must not be the filesystem root`)
+  }
+  // Note: the project no longer has to live under /home/user. Bootstrap chowns
+  // projectPath to the sandbox user, which is what git's dubious-ownership
+  // check actually cares about — see buildBootstrapCommand.
 }
 
 function requireStringArray(value: unknown, fieldName: string, errors: string[]): void {

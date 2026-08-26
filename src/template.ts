@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto"
 import { setTimeout as sleep } from "node:timers/promises"
 
-import { Template } from "e2b"
+import { Template, TemplateBase, type TemplateClass } from "e2b"
 
 import {
   createE2BApiClient,
@@ -381,11 +381,11 @@ async function deleteFailedManagedTemplate(
 }
 
 async function buildManagedTemplateOnce(
-  template: Parameters<typeof Template.build>[0],
+  template: TemplateClass,
   alias: string,
   logger?: PluginLogger,
 ): Promise<void> {
-  await Template.build(template, alias, createE2BConnectionOptions(logger))
+  await TemplateBase.build(template, alias, createE2BConnectionOptions(logger))
 }
 
 export function buildSystemdServiceInstallCommand(projectPath: string, serverPort: number): string {

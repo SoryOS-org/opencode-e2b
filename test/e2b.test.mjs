@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "bun:test"
 
-import { Sandbox, SandboxNotFoundError, Template } from "e2b"
+import { Sandbox, SandboxNotFoundError, TemplateBase } from "e2b"
 
 import { normalizeOptions } from "../dist/config.js"
 import {
@@ -102,8 +102,8 @@ test("createWorkspaceSandbox wraps versioned published templates", async () => {
   const originalApiKey = process.env.E2B_API_KEY
   const originalFetch = globalThis.fetch
   const originalCreate = Sandbox.create
-  const originalGetTags = Template.getTags
-  const originalBuild = Template.build
+  const originalGetTags = TemplateBase.getTags
+  const originalBuild = TemplateBase.build
   const calls = []
   const runtimeVersion = "1.14.39"
   const pluginPackageVersion = "prebuilt-create-test"
@@ -127,10 +127,10 @@ test("createWorkspaceSandbox wraps versioned published templates", async () => {
     calls.push(["fetch", method])
     return jsonResponse([])
   }
-  Template.getTags = async () => {
+  TemplateBase.getTags = async () => {
     throw new Error("workspace sandbox creation should not call getTags")
   }
-  Template.build = async (_template, name) => {
+  TemplateBase.build = async (_template, name) => {
     calls.push(["build", name])
   }
 
@@ -153,8 +153,8 @@ test("createWorkspaceSandbox wraps versioned published templates", async () => {
     restoreTestEnv(originalApiKey)
     globalThis.fetch = originalFetch
     Sandbox.create = originalCreate
-    Template.getTags = originalGetTags
-    Template.build = originalBuild
+    TemplateBase.getTags = originalGetTags
+    TemplateBase.build = originalBuild
   }
 })
 
@@ -162,8 +162,8 @@ test("createWorkspaceSandbox builds a managed base when published template is mi
   const originalApiKey = process.env.E2B_API_KEY
   const originalFetch = globalThis.fetch
   const originalCreate = Sandbox.create
-  const originalGetTags = Template.getTags
-  const originalBuild = Template.build
+  const originalGetTags = TemplateBase.getTags
+  const originalBuild = TemplateBase.build
   const calls = []
   const runtimeVersion = "1.14.38"
   const pluginPackageVersion = "managed-fallback-test"
@@ -200,10 +200,10 @@ test("createWorkspaceSandbox builds a managed base when published template is mi
     calls.push(["fetch", method])
     return jsonResponse([])
   }
-  Template.getTags = async () => {
+  TemplateBase.getTags = async () => {
     throw new Error("workspace sandbox creation should not call getTags")
   }
-  Template.build = async (_template, name) => {
+  TemplateBase.build = async (_template, name) => {
     calls.push(["build", name])
     if (name === publishedWrapperAlias) {
       throw new Error("published template unavailable")
@@ -234,8 +234,8 @@ test("createWorkspaceSandbox builds a managed base when published template is mi
     restoreTestEnv(originalApiKey)
     globalThis.fetch = originalFetch
     Sandbox.create = originalCreate
-    Template.getTags = originalGetTags
-    Template.build = originalBuild
+    TemplateBase.getTags = originalGetTags
+    TemplateBase.build = originalBuild
   }
 })
 
@@ -243,16 +243,16 @@ test("createWorkspaceSandbox never calls template getTags", async () => {
   const originalApiKey = process.env.E2B_API_KEY
   const originalFetch = globalThis.fetch
   const originalCreate = Sandbox.create
-  const originalGetTags = Template.getTags
-  const originalBuild = Template.build
+  const originalGetTags = TemplateBase.getTags
+  const originalBuild = TemplateBase.build
 
   process.env.E2B_API_KEY = "e2b_test"
   globalThis.fetch = async () => jsonResponse([])
   Sandbox.create = async () => ({ sandboxId: "workspace-sandbox" })
-  Template.getTags = async () => {
+  TemplateBase.getTags = async () => {
     throw new Error("getTags should not be called")
   }
-  Template.build = async () => {}
+  TemplateBase.build = async () => {}
 
   try {
     const sandbox = await createWorkspaceSandbox(
@@ -268,8 +268,8 @@ test("createWorkspaceSandbox never calls template getTags", async () => {
     restoreTestEnv(originalApiKey)
     globalThis.fetch = originalFetch
     Sandbox.create = originalCreate
-    Template.getTags = originalGetTags
-    Template.build = originalBuild
+    TemplateBase.getTags = originalGetTags
+    TemplateBase.build = originalBuild
   }
 })
 

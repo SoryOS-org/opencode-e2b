@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "bun:test"
 
-import { Template } from "e2b"
+import { TemplateBase } from "e2b"
 
 import {
   BOOTSTRAP_READY_MARKER,
@@ -128,8 +128,8 @@ test("buildSystemdStartCommand starts the service and streams opencode logs", ()
 test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
   const originalApiKey = process.env.E2B_API_KEY
   const originalFetch = globalThis.fetch
-  const originalGetTags = Template.getTags
-  const originalBuild = Template.build
+  const originalGetTags = TemplateBase.getTags
+  const originalBuild = TemplateBase.build
   const calls = []
   const inputs = {
     ...baseInputs,
@@ -138,7 +138,7 @@ test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
   }
 
   process.env.E2B_API_KEY = "e2b_test"
-  Template.getTags = async () => {
+  TemplateBase.getTags = async () => {
     throw new Error("managed template lookup should not call getTags")
   }
   globalThis.fetch = async (input, init) => {
@@ -146,7 +146,7 @@ test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
     calls.push(["fetch", method])
     return jsonResponse([])
   }
-  Template.build = async (_template, name) => {
+  TemplateBase.build = async (_template, name) => {
     calls.push(["build", name])
   }
 
@@ -162,16 +162,16 @@ test("ensureManagedWorkspaceTemplate builds managed templates", async () => {
   } finally {
     restoreTestEnv(originalApiKey)
     globalThis.fetch = originalFetch
-    Template.getTags = originalGetTags
-    Template.build = originalBuild
+    TemplateBase.getTags = originalGetTags
+    TemplateBase.build = originalBuild
   }
 })
 
 test("ensureManagedWorkspaceTemplate deletes errored managed templates before rebuilding", async () => {
   const originalApiKey = process.env.E2B_API_KEY
   const originalFetch = globalThis.fetch
-  const originalGetTags = Template.getTags
-  const originalBuild = Template.build
+  const originalGetTags = TemplateBase.getTags
+  const originalBuild = TemplateBase.build
   const calls = []
   const inputs = {
     ...baseInputs,
@@ -181,10 +181,10 @@ test("ensureManagedWorkspaceTemplate deletes errored managed templates before re
   const alias = buildManagedTemplateAlias(inputs)
 
   process.env.E2B_API_KEY = "e2b_test"
-  Template.getTags = async () => {
+  TemplateBase.getTags = async () => {
     throw new Error("managed template lookup should not call getTags")
   }
-  Template.build = async (_template, name) => {
+  TemplateBase.build = async (_template, name) => {
     calls.push(["build", name])
   }
   globalThis.fetch = async (input, init) => {
@@ -215,16 +215,16 @@ test("ensureManagedWorkspaceTemplate deletes errored managed templates before re
   } finally {
     restoreTestEnv(originalApiKey)
     globalThis.fetch = originalFetch
-    Template.getTags = originalGetTags
-    Template.build = originalBuild
+    TemplateBase.getTags = originalGetTags
+    TemplateBase.build = originalBuild
   }
 })
 
 test("ensureManagedWorkspaceTemplate waits for in-progress managed templates", async () => {
   const originalApiKey = process.env.E2B_API_KEY
   const originalFetch = globalThis.fetch
-  const originalGetTags = Template.getTags
-  const originalBuild = Template.build
+  const originalGetTags = TemplateBase.getTags
+  const originalBuild = TemplateBase.build
   const calls = []
   const inputs = {
     ...baseInputs,
@@ -235,10 +235,10 @@ test("ensureManagedWorkspaceTemplate waits for in-progress managed templates", a
   const statuses = ["building", "ready"]
 
   process.env.E2B_API_KEY = "e2b_test"
-  Template.getTags = async () => {
+  TemplateBase.getTags = async () => {
     throw new Error("managed template lookup should not call getTags")
   }
-  Template.build = async () => {
+  TemplateBase.build = async () => {
     throw new Error("managed template build should not run while another build is pending")
   }
   globalThis.fetch = async (input, init) => {
@@ -266,8 +266,8 @@ test("ensureManagedWorkspaceTemplate waits for in-progress managed templates", a
   } finally {
     restoreTestEnv(originalApiKey)
     globalThis.fetch = originalFetch
-    Template.getTags = originalGetTags
-    Template.build = originalBuild
+    TemplateBase.getTags = originalGetTags
+    TemplateBase.build = originalBuild
   }
 })
 

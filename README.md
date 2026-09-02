@@ -65,6 +65,20 @@ _Session warp_ moves a session's sync history into a target workspace — or det
 
 > **Heads up:** OpenCode's experimental workspace API is still unstable, so re-check this when bumping the supported runtime.
 
+## Known limitations
+
+**1. Experimental foundation.**
+This plugin uses the `experimental_workspace` API of OpenCode. You must set `OPENCODE_EXPERIMENTAL_WORKSPACES=true`. OpenCode can change this API without notice.
+
+**2. macOS and Linux hosts only.**
+The sandbox stores the project at the same path as the host. This makes a session directory valid on both machines. Windows paths cannot exist on both machines. On Windows, the plugin uses `/home/user/project` in the sandbox instead. The host cannot open that path. You can create a workspace on Windows. But a prompt inside that workspace does not get a reply. A warped session does not work either.
+
+**3. A sandbox does not survive an idle period.**
+E2B pauses a sandbox after `sandboxTimeoutMs`. The default is 1 hour. OpenCode does not reconnect to a paused sandbox. The workspace shows as unavailable. You must create the workspace again. For long sessions, set a higher `sandboxTimeoutMs`.
+
+**4. Warp of a session with history can fail.**
+A warp of a new session is reliable. A warp of a session with existing messages can fail with a sync error ("sequence mismatch"). If this happens, try the warp again, or start the session inside the workspace.
+
 ## Compatibility
 
 - Minimum supported OpenCode runtime: `1.16.0`.

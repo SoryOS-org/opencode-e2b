@@ -58,7 +58,9 @@ export function buildBootstrapCommand(info: WorkspaceInfo, config: NormalizedE2B
       .map((command) => command.trim())
       .filter(Boolean)
       .map((command) => `(${command})`),
-    `if [ ! -d .git ]; then git init -b ${shellSingleQuote(branch)}; fi`,
+    // Commit the uploaded snapshot so the sandbox tree starts clean: warp's "move changes"
+    // diff then contains only what the agent changed, not every uploaded file.
+    `if [ ! -d .git ]; then git init -b ${shellSingleQuote(branch)} && git add -A && git -c user.name=opencode -c user.email=opencode@e2b.local commit -q --allow-empty -m 'Workspace snapshot'; fi`,
   ]
 
   return commands.join(" && ")

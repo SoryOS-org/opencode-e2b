@@ -69,7 +69,7 @@ test("buildBootstrapCommand combines prepare commands and git initialization", (
       "cd '/home/user/project'",
       "(npm install)",
       "(npm run build)",
-      "if [ ! -d .git ]; then git init -b 'feature/test'; fi",
+      "if [ ! -d .git ]; then git init -b 'feature/test' && git add -A && git -c user.name=opencode -c user.email=opencode@e2b.local commit -q --allow-empty -m 'Workspace snapshot'; fi",
     ].join(" && "),
   )
 })

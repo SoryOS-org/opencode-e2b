@@ -52,7 +52,7 @@ On workspace create, the plugin:
 
 - finds an existing compatible sandbox for the workspace or creates a new one;
 - uploads the local project snapshot into the sandbox;
-- ensures the uploaded project has a git repository and writes `.git/opencode`;
+- ensures the uploaded project has a git repository with the snapshot committed, and writes `.git/opencode`;
 - writes per-workspace OpenCode env values to `/tmp/.opencode-e2b.env`;
 - releases the managed workspace template's marker-gated systemd `opencode serve` service;
 - waits for `/global/health`, then for the sync endpoints (`/global/event` and `/sync/history`) before returning the remote workspace target.
@@ -62,6 +62,8 @@ OpenCode persists `configure()` before `create()`, so the plugin does not store 
 ## Session Warp
 
 _Session warp_ moves a session's sync history into a target workspace — or detaches it back to the local project. It runs through OpenCode's `experimental/workspace/warp` endpoint.
+
+When a session is warped out of a workspace, OpenCode offers to move the workspace's file changes with it. Those changes are the sandbox repository's working-tree diff against the snapshot the plugin committed at bootstrap, applied as a patch to your project: your local history is untouched, and work the agent commits inside the sandbox does not travel back. Your project must be a git repository root for the patch to apply.
 
 > **Heads up:** OpenCode's experimental workspace API is still unstable, so re-check this when bumping the supported runtime.
 

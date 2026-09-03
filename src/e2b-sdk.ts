@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+
 import {
   ApiClient,
   ConnectionConfig,
@@ -19,6 +21,25 @@ export class E2BApiStatusError extends Error {
   ) {
     super(`${message} failed with status ${status}: ${errorMessage(error)}`)
     this.name = "E2BApiStatusError"
+  }
+}
+
+/**
+ * Identify this plugin's traffic to E2B for usage attribution. The SDK appends the
+ * token to the User-Agent of every request (an explicit caller header still wins).
+ * The value is derived from package.json so it tracks releases, and it is set once
+ * at module load because ConnectionConfig reads it at construction time.
+ */
+ConnectionConfig.setIntegration(readIntegrationTag())
+
+function readIntegrationTag(): string | undefined {
+  try {
+    const raw = readFileSync(new URL("../package.json", import.meta.url), "utf8")
+    const { name, version } = JSON.parse(raw) as Partial<{ name: string; version: string }>
+    if (!name || !version) return undefined
+    return `${name.replace(/^@/, "").replace("/", "-")}/${version}`
+  } catch {
+    return undefined
   }
 }
 

@@ -285,11 +285,20 @@ async function buildManagedWorkspaceTemplate(
   }
 }
 
-export function buildOpenCodeInstallCommand(runtimeVersion: string): string {
+/** The npm package of the OpenCode 1 line. OpenCode 2 is published as @opencode/cli. */
+export const OPENCODE_1_PACKAGE = "opencode-ai"
+
+export function buildOpenCodeInstallCommand(
+  runtimeVersion: string,
+  packageName = OPENCODE_1_PACKAGE,
+): string {
   if (!RUNTIME_VERSION_PATTERN.test(runtimeVersion)) {
     throw new Error("OpenCode runtime version must be a valid SemVer string")
   }
-  return `npm install -g --omit=optional ${shellSingleQuote(`opencode-ai@${runtimeVersion}`)}`
+  if (!/^(@[a-z0-9-]+\/)?[a-z0-9-]+$/.test(packageName)) {
+    throw new Error("OpenCode package name must be a plain npm package name")
+  }
+  return `npm install -g --omit=optional ${shellSingleQuote(`${packageName}@${runtimeVersion}`)}`
 }
 
 export function buildPrebuiltOpenCodeTemplateName(runtimeVersion: string): string {

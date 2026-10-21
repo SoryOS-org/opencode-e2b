@@ -1,30 +1,21 @@
 import type { PluginInput, WorkspaceInfo } from "@opencode-ai/plugin"
 
-import {
-  buildPersistedExtra,
-  defaultWorkspaceName,
-  normalizeOptions,
-  resolveWorkspaceCompatibility,
-  resolveWorkspaceConfig,
-} from "./config.js"
+import { defaultWorkspaceName, normalizeOptions, resolveWorkspaceConfig } from "../core/config.js"
+import { buildPersistedExtra, resolveWorkspaceCompatibility } from "./compat.js"
 import {
   readSandboxCompatibility,
   removeWorkspaceSandbox,
   requireWorkspaceSandboxRecord,
   sandboxBaseUrl,
   sandboxTargetHeaders,
-} from "./e2b.js"
-import { runTemplateGC } from "./gc.js"
-import { readLocalGitBranch } from "./local-git.js"
-import { errorMessage } from "./shared.js"
-import { assertWorkspaceCompatibility, resolveLocalRuntimeVersion } from "./runtime.js"
-import type { SandboxStore } from "./sandbox-store.js"
-import type {
-  E2BWorkspacePluginOptions,
-  NormalizedE2BWorkspaceConfig,
-  PluginLogger,
-  RuntimeWorkspaceAdapter,
-} from "./types.js"
+} from "../core/e2b.js"
+import { runTemplateGC } from "../core/gc.js"
+import { readLocalGitBranch } from "../core/local-git.js"
+import { errorMessage } from "../core/shared.js"
+import { assertWorkspaceCompatibility, resolveLocalRuntimeVersion } from "../core/runtime.js"
+import type { SandboxStore } from "../core/sandbox-store.js"
+import type { E2BWorkspacePluginOptions, NormalizedE2BWorkspaceConfig, PluginLogger } from "../core/types.js"
+import type { RuntimeWorkspaceAdapter } from "./types.js"
 import { createWorkspace } from "./workspace-create.js"
 
 type WorkspaceAdapterDeps = {

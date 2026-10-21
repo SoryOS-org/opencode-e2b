@@ -1,5 +1,3 @@
-import type { PluginOptions, WorkspaceAdapter } from "@opencode-ai/plugin"
-
 export type E2BNetworkOptions = {
   allowPublicTraffic?: boolean
   allowOut?: string[]
@@ -39,7 +37,7 @@ export type E2BTemplateGCOptions = {
   cooldownMs?: number
 }
 
-export type E2BWorkspacePluginOptions = PluginOptions & {
+export type E2BWorkspacePluginOptions = Record<string, unknown> & {
   nodeVariant?: string
   sandboxTimeoutMs?: number
   projectPath?: string
@@ -83,8 +81,6 @@ export type PersistedWorkspaceExtra = {
   }
 }
 
-export type RuntimeWorkspaceAdapter = WorkspaceAdapter
-
 export type PluginLogger = {
   debug(message: string, extra?: Record<string, unknown>): Promise<void>
   info(message: string, extra?: Record<string, unknown>): Promise<void>
@@ -96,4 +92,15 @@ export type SandboxMetadataCompatibility = {
   workspaceApiVersion?: string
   runtimeVersion?: string
   flags: string[]
+}
+
+/**
+ * The workspace fields the shared code reads. OpenCode 1's WorkspaceInfo satisfies it,
+ * so core needs no OpenCode types.
+ */
+export type WorkspaceRef = {
+  id: string
+  projectID: string
+  branch: string | null
+  extra: unknown
 }

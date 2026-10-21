@@ -6,7 +6,7 @@ import {
   clearLocalRuntimeVersionCacheForTest,
   meetsRuntimeFloor,
   resolveLocalRuntimeVersion,
-} from "../dist/runtime.js"
+} from "../dist/core/runtime.js"
 
 test("meetsRuntimeFloor accepts versions equal to or newer than the floor", () => {
   assert.equal(meetsRuntimeFloor("1.14.20", "1.14.20"), true)

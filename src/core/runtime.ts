@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises"
 
-import type { PluginInput } from "@opencode-ai/plugin"
 import { Sandbox } from "e2b"
 
 import { CURRENT_WORKSPACE_API_VERSION } from "./config.js"
@@ -8,6 +7,9 @@ import { errorMessage } from "./shared.js"
 import type { PersistedWorkspaceCompatibility, PluginLogger, SandboxMetadataCompatibility } from "./types.js"
 
 const HEALTH_TIMEOUT_MS = 1_500
+
+/** The OpenCode SDK client. Only its raw request client is used, so core keeps it opaque. */
+type OpenCodeClient = unknown
 
 /**
  * Inclusive OpenCode runtime floor below which this plugin refuses to load or
@@ -33,7 +35,7 @@ export function forgetSandboxCompatibility(sandboxId: string): void {
 export async function resolveLocalRuntimeVersion(
   serverUrl: URL,
   logger?: PluginLogger,
-  client?: PluginInput["client"],
+  client?: OpenCodeClient,
 ): Promise<string> {
   installedRuntimeVersionPromise ??= fetchLocalRuntimeHealth(serverUrl, logger, client)
     .then((health) => {
@@ -55,7 +57,7 @@ export function clearLocalRuntimeVersionCacheForTest(): void {
 async function fetchLocalRuntimeHealth(
   serverUrl: URL,
   logger: PluginLogger | undefined,
-  client: PluginInput["client"] | undefined,
+  client: OpenCodeClient | undefined,
 ): Promise<{ healthy: true; version: string }> {
   try {
     return await fetchRuntimeHealthWithClient(client, logger)
@@ -74,7 +76,7 @@ async function fetchLocalRuntimeHealth(
 }
 
 async function fetchRuntimeHealthWithClient(
-  client: PluginInput["client"] | undefined,
+  client: OpenCodeClient | undefined,
   logger: PluginLogger | undefined,
 ): Promise<{ healthy: true; version: string }> {
   const rawClient = (client as unknown as { _client?: RuntimeHealthClient } | undefined)?._client
@@ -314,7 +316,7 @@ function remoteHealthUrl(baseUrl: URL): URL {
 }
 
 async function readInstalledPluginVersion(): Promise<string> {
-  const packageJsonUrl = new URL("../package.json", import.meta.url)
+  const packageJsonUrl = new URL("../../package.json", import.meta.url)
   const raw = await readFile(packageJsonUrl, "utf8")
   const payload = JSON.parse(raw) as Partial<{ version: unknown }>
   if (typeof payload.version !== "string" || payload.version.trim() === "") {

@@ -34,7 +34,7 @@ ConnectionConfig.setIntegration(readIntegrationTag())
 
 function readIntegrationTag(): string | undefined {
   try {
-    const raw = readFileSync(new URL("../package.json", import.meta.url), "utf8")
+    const raw = readFileSync(new URL("../../package.json", import.meta.url), "utf8")
     const { name, version } = JSON.parse(raw) as Partial<{ name: string; version: string }>
     if (!name || !version) return undefined
     return `${name.replace(/^@/, "").replace("/", "-")}/${version}`

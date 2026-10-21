@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "bun:test"
 
-import { errorMessage, shellSingleQuote } from "../dist/shared.js"
+import { errorMessage, shellSingleQuote } from "../dist/core/shared.js"
 
 test("shellSingleQuote preserves values for POSIX shell embedding", () => {
   assert.equal(shellSingleQuote("simple"), "'simple'")

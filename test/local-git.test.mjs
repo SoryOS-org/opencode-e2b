@@ -4,7 +4,7 @@ import os from "node:os"
 import path from "node:path"
 import { test } from "bun:test"
 
-import { readLocalGitBranch } from "../dist/local-git.js"
+import { readLocalGitBranch } from "../dist/core/local-git.js"
 
 async function tempDir() {
   return mkdtemp(path.join(os.tmpdir(), "opencode-e2b-git-"))

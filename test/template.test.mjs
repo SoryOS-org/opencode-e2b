@@ -17,7 +17,7 @@ import {
   ensureManagedWorkspaceTemplate,
   MANAGED_TEMPLATE_PREFIX,
   RUNTIME_ENV_FILE,
-} from "../dist/template.js"
+} from "../dist/core/template.js"
 
 const baseInputs = {
   nodeVariant: "22-slim",

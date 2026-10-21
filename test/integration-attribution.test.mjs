@@ -6,7 +6,7 @@ import { ConnectionConfig } from "e2b"
 
 // Importing the module runs ConnectionConfig.setIntegration(...) at load time. This
 // uses the real e2b module, so it checks the User-Agent the SDK actually sends.
-import "../dist/e2b-sdk.js"
+import "../dist/core/e2b-sdk.js"
 
 test("tags E2B requests with the plugin name and version for attribution", () => {
   const { name, version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"))

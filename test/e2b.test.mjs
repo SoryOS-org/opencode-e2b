@@ -3,7 +3,7 @@ import { test } from "bun:test"
 
 import { Sandbox, SandboxNotFoundError, TemplateBase } from "e2b"
 
-import { normalizeOptions } from "../dist/config.js"
+import { normalizeOptions } from "../dist/core/config.js"
 import {
   claimProvisioningSandbox,
   createWorkspaceSandbox,
@@ -14,8 +14,8 @@ import {
   requireWorkspaceSandboxRecord,
   sandboxBaseUrl,
   sandboxTargetHeaders,
-} from "../dist/e2b.js"
-import { buildManagedBaseTemplateAlias, buildManagedWorkspaceTemplateAlias } from "../dist/template.js"
+} from "../dist/core/e2b.js"
+import { buildManagedBaseTemplateAlias, buildManagedWorkspaceTemplateAlias } from "../dist/core/template.js"
 
 const workspaceInfo = {
   id: "workspace-id",

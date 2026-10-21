@@ -1,6 +1,11 @@
-# OpenCode E2B Workspace Plugin
+# OpenCode E2B Plugin
 
-TypeScript plugin for OpenCode's experimental workspace API. It registers an `e2b` workspace type that provisions remote OpenCode workspaces in E2B sandboxes.
+E2B sandboxes for OpenCode. One package supports both OpenCode releases:
+
+- **OpenCode 1** (`opencode-ai`): the plugin registers an `e2b` type for OpenCode's experimental workspace API. A workspace runs OpenCode itself in an E2B sandbox. The sections from [Install](#install) on describe this mode.
+- **OpenCode 2** (`@opencode/cli`): OpenCode 2 has no workspace API for plugins. The plugin runs every shell command of your local OpenCode in an E2B sandbox instead, and keeps your files on your machine. See [OpenCode 2](#opencode-2).
+
+The package's default export carries both entry points: OpenCode 1 calls `server`, OpenCode 2 calls `setup`, and each loads only its own code.
 
 ## Install
 
@@ -32,6 +37,46 @@ Start OpenCode with workspace support enabled:
 E2B_API_KEY=... OPENCODE_EXPERIMENTAL_WORKSPACES=true opencode
 ```
 
+## OpenCode 2
+
+OpenCode runs on your machine. Every shell command that it runs (the agent's and your `!` commands) runs in an E2B sandbox, at the same path as on your machine. Reading and editing files stays local, so diffs, undo and the file picker work as usual.
+
+```jsonc
+// opencode.jsonc
+{
+  "plugins": [{ "package": "/absolute/path/to/opencode-e2b", "options": { "domain": "e2b-juliett.dev" } }],
+}
+```
+
+Set `E2B_API_KEY`. OpenCode 2 loads a plugin folder from its `index.js`, which re-exports `dist/index.js`, so run `bun run build` first.
+
+How it works:
+
+1. The plugin hooks `shell.create.before` and swaps the shell for a small shim (`bin/bash`). OpenCode keeps its own permission rules, timeouts, background jobs and output handling.
+2. Before each command, files you changed go to the sandbox. Git decides what to send, so ignored files (`node_modules`, `.env`) never leave your machine.
+3. After the command, files it changed come back. If you edited the same file meanwhile, your version stays and the sandbox version goes to `.git/opencode-e2b/conflicts/`.
+4. One sandbox per project. It starts when you send a prompt, pauses when idle and resumes on the next command.
+
+With nothing to sync, a command costs one round trip to E2B: about 0.13 s from Europe to the EU region, 0.27 s to the US region. The first upload of a large project is split into chunks (a 150 MB tree takes about 30 s, once).
+
+Git: a plain git command (`git add .`, `git commit -m "..."`, `git checkout -b x`) runs on your machine, where the real repository is, with git hooks off. History changes inside a longer command (`npm test && git commit`) are blocked with a message. The sandbox gets `.git` one way, so git can read history there too.
+
+| Option        | Default                   | Meaning                                                                                                                                                                                                                                                                                              |
+| ------------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `domain`      | `E2B_DOMAIN` or `e2b.app` | E2B region: `e2b.app` (US), `e2b-juliett.dev` (EU), `e2b-tango.dev` (APAC). The API key must belong to that region.                                                                                                                                                                                  |
+| `template`    | `opencode`                | Template for new sandboxes                                                                                                                                                                                                                                                                           |
+| `idleMinutes` | `15`                      | Idle time before the sandbox pauses                                                                                                                                                                                                                                                                  |
+| `env`         | `[]`                      | Names of environment variables to pass to commands. Nothing else from your environment goes to the sandbox.                                                                                                                                                                                          |
+| `git`         | `"auto"`                  | Send `.git` to the sandbox: `"auto"` up to 200 MB, `true` always, `false` never                                                                                                                                                                                                                      |
+| `network`     | none                      | `{ "allowOut": [...], "denyOut": [...] }`                                                                                                                                                                                                                                                            |
+| `secrets`     | none                      | Host to E2B secret name, for example `{ "api.github.com": "github-token" }`. E2B's egress proxy adds `Authorization: Bearer <value>` to HTTPS requests to that host; the sandbox never sees the value. Map a secret only to the real API host: a host that echoes headers lets sandbox code read it. |
+
+Tools for the agent: `e2b_preview_url` (public link to a port), `e2b_read` (files that exist only in the sandbox), `e2b_status`.
+
+Commands: `/e2b-status`, `/e2b-pull <path>` (copy sandbox-only files such as `dist`), `/e2b-snapshot` and `/e2b-snapshot clear` (start new sandboxes from the current one, with its installed dependencies), `/e2b-reset`, `/e2b-off`, `/e2b-on`.
+
+Limits: the project must be a git repository; submodule contents and a linked worktree's history are not synced; gitignored build output stays in the sandbox (use `e2b_read` or `/e2b-pull`).
+
 ## Development
 
 ```bash
@@ -41,6 +86,15 @@ bun run test
 ```
 
 The plugin is loaded by OpenCode's Bun runtime and uses Bun as its development runtime. `bun run test` builds `dist/` first, then runs the Bun test runner against `test/*.test.mjs`.
+
+Layout:
+
+| Folder         | What it holds                                                                             | Imports                         |
+| -------------- | ----------------------------------------------------------------------------------------- | ------------------------------- |
+| `src/core/`    | Shared E2B code: SDK setup and attribution, sandboxes, templates, cleanup, upload, config | No OpenCode packages            |
+| `src/v1/`      | OpenCode 1: workspace adapter, bootstrap, compatibility checks                            | `@opencode-ai/plugin`           |
+| `src/v2/`      | OpenCode 2: shell hook, sync, sandbox per project, tools and commands                     | `@opencode/plugin` (types only) |
+| `src/index.ts` | The default export with both entry points, each loaded on first use                       | type imports only               |
 
 ## Runtime Behavior
 

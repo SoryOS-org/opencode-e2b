@@ -1,11 +1,10 @@
-import type { WorkspaceInfo } from "@opencode-ai/plugin"
-
 import type {
   E2BWorkspacePluginOptions,
   NormalizedE2BWorkspaceConfig,
   PersistedWorkspaceCompatibility,
   PersistedWorkspaceExtra,
   PluginLogger,
+  WorkspaceRef,
 } from "./types.js"
 import { DEFAULT_TEMPLATE_GC_COOLDOWN_MS, DEFAULT_TEMPLATE_GC_TTL_MS, MIN_TEMPLATE_GC_TTL_MS } from "./gc.js"
 
@@ -140,26 +139,8 @@ export async function warnDeprecatedBootstrapOptions(
   }
 }
 
-export function buildPersistedExtra(
-  config: NormalizedE2BWorkspaceConfig,
-  runtimeVersion: string,
-): PersistedWorkspaceExtra {
-  return {
-    e2b: {
-      workspaceApiVersion: config.workspaceApiVersion,
-      runtimeVersion,
-      flags: config.flags,
-      nodeVariant: config.nodeVariant,
-      projectPath: config.projectPath,
-      serverPort: config.serverPort,
-      secure: config.secure,
-      metadata: config.metadata,
-    },
-  }
-}
-
 export function resolveWorkspaceConfig(
-  info: WorkspaceInfo,
+  info: WorkspaceRef,
   options?: E2BWorkspacePluginOptions,
 ): NormalizedE2BWorkspaceConfig {
   const normalized = normalizeOptions(options)
@@ -181,41 +162,13 @@ export function resolveWorkspaceConfig(
   }
 }
 
-export function resolveWorkspaceCompatibility(
-  info: WorkspaceInfo,
-  config: NormalizedE2BWorkspaceConfig,
-  runtimeVersion: string,
-): PersistedWorkspaceCompatibility {
-  const extra = readPersistedExtra(info)
-  if (!extra) {
-    return buildFreshCompatibility(config, runtimeVersion)
-  }
-
-  return {
-    workspaceApiVersion: extra.e2b.workspaceApiVersion,
-    runtimeVersion: extra.e2b.runtimeVersion,
-    flags: extra.e2b.flags,
-  }
-}
-
-export function buildFreshCompatibility(
-  config: NormalizedE2BWorkspaceConfig,
-  runtimeVersion: string,
-): PersistedWorkspaceCompatibility {
-  return {
-    workspaceApiVersion: config.workspaceApiVersion,
-    runtimeVersion,
-    flags: config.flags,
-  }
-}
-
-export function defaultWorkspaceName(info: WorkspaceInfo): string {
+export function defaultWorkspaceName(info: WorkspaceRef): string {
   const branchPart = info.branch?.replace(/[^a-zA-Z0-9._-]+/g, "-")
   const suffix = info.id.slice(-6)
   return branchPart ? `e2b-${branchPart}` : `e2b-${suffix}`
 }
 
-function readPersistedExtra(info: WorkspaceInfo): PersistedWorkspaceExtra | undefined {
+export function readPersistedExtra(info: WorkspaceRef): PersistedWorkspaceExtra | undefined {
   if (!info.extra || typeof info.extra !== "object") return undefined
 
   const candidate = info.extra as Partial<PersistedWorkspaceExtra>

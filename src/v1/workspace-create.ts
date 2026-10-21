@@ -1,7 +1,8 @@
 import type { PluginInput, WorkspaceInfo } from "@opencode-ai/plugin"
 
 import { bootstrapWorkspace } from "./bootstrap.js"
-import { buildFreshCompatibility, resolveWorkspaceCompatibility, resolveWorkspaceConfig } from "./config.js"
+import { resolveWorkspaceConfig } from "../core/config.js"
+import { buildFreshCompatibility, resolveWorkspaceCompatibility } from "./compat.js"
 import {
   buildWorkspaceSandboxMetadata,
   claimProvisioningSandbox,
@@ -15,17 +16,17 @@ import {
   sandboxBaseUrl,
   sandboxTargetHeaders,
   upsertProvisioningSandbox,
-} from "./e2b.js"
+} from "../core/e2b.js"
 import {
   assertWorkspaceCompatibility,
   forgetSandboxCompatibility,
   resolveLocalPluginVersion,
   resolveLocalRuntimeVersion,
-} from "./runtime.js"
-import type { SandboxStore } from "./sandbox-store.js"
-import { errorMessage } from "./shared.js"
-import type { E2BWorkspacePluginOptions, NormalizedE2BWorkspaceConfig, PluginLogger } from "./types.js"
-import { uploadLocalSnapshot } from "./upload.js"
+} from "../core/runtime.js"
+import type { SandboxStore } from "../core/sandbox-store.js"
+import { errorMessage } from "../core/shared.js"
+import type { E2BWorkspacePluginOptions, NormalizedE2BWorkspaceConfig, PluginLogger } from "../core/types.js"
+import { uploadLocalSnapshot } from "../core/upload.js"
 import { SandboxNotFoundError } from "e2b"
 
 export type ExistingSandboxPlan =

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import { test } from "bun:test"
 
-import { MANAGED_TEMPLATE_PREFIX } from "../dist/template.js"
-import { selectStaleManagedTemplates } from "../dist/gc.js"
+import { MANAGED_TEMPLATE_PREFIX } from "../dist/core/template.js"
+import { selectStaleManagedTemplates } from "../dist/core/gc.js"
 
 const now = Date.parse("2026-05-01T12:00:00.000Z")
 const ttlMs = 60 * 60 * 1000

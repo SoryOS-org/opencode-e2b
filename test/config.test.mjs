@@ -1,12 +1,8 @@
 import assert from "node:assert/strict"
 import { test } from "bun:test"
 
-import {
-  buildPersistedExtra,
-  normalizeOptions,
-  resolveWorkspaceConfig,
-  validatePluginOptions,
-} from "../dist/config.js"
+import { normalizeOptions, resolveWorkspaceConfig, validatePluginOptions } from "../dist/core/config.js"
+import { buildPersistedExtra } from "../dist/v1/compat.js"
 
 test("normalizeOptions applies stable defaults", () => {
   const config = normalizeOptions()

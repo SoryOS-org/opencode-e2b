@@ -4,8 +4,8 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { test } from "bun:test"
 
-import { normalizeOptions } from "../dist/config.js"
-import { uploadLocalSnapshot } from "../dist/upload.js"
+import { normalizeOptions } from "../dist/core/config.js"
+import { uploadLocalSnapshot } from "../dist/core/upload.js"
 
 test("uploadLocalSnapshot uploads project files and skips default ignores", async () => {
   const localRoot = await mkdtemp(path.join(tmpdir(), "opencode-e2b-upload-"))

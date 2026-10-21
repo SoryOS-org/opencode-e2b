@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "bun:test"
 
-import { reportUnmirroredProjectPath } from "../dist/workspace.js"
+import { reportUnmirroredProjectPath } from "../dist/v1/workspace.js"
 
 function harness() {
   const logs = []

@@ -6,9 +6,9 @@ import {
   buildBootstrapCommand,
   renderRuntimeEnvFile,
   waitForSyncReady,
-} from "../dist/bootstrap.js"
-import { normalizeOptions } from "../dist/config.js"
-import { BOOTSTRAP_READY_MARKER } from "../dist/template.js"
+} from "../dist/v1/bootstrap.js"
+import { normalizeOptions } from "../dist/core/config.js"
+import { BOOTSTRAP_READY_MARKER } from "../dist/core/template.js"
 
 test("renderRuntimeEnvFile exports defined values and skips undefined entries", () => {
   assert.equal(

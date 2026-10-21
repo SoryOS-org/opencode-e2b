@@ -1,4 +1,3 @@
-import type { WorkspaceInfo } from "@opencode-ai/plugin"
 import { Sandbox, SandboxNotFoundError, type SandboxOpts, type SandboxState } from "e2b"
 
 import { createE2BConnectionOptions } from "./e2b-sdk.js"
@@ -15,6 +14,7 @@ import type {
   PersistedWorkspaceCompatibility,
   PluginLogger,
   SandboxMetadataCompatibility,
+  WorkspaceRef,
 } from "./types.js"
 
 const WORKSPACE_ID_METADATA_KEY = "opencodeWorkspaceId"
@@ -42,7 +42,7 @@ const workspaceSandboxRecordPromises = new Map<string, Promise<WorkspaceSandboxR
 const PROVISIONING_LOCK_SANDBOX_ID = "__provisioning__"
 
 export function buildWorkspaceSandboxMetadata(
-  info: WorkspaceInfo,
+  info: WorkspaceRef,
   config: NormalizedE2BWorkspaceConfig,
   compatibility: PersistedWorkspaceCompatibility,
 ): Record<string, string> {
@@ -57,7 +57,7 @@ export function buildWorkspaceSandboxMetadata(
 }
 
 export async function createWorkspaceSandbox(
-  info: WorkspaceInfo,
+  info: WorkspaceRef,
   config: NormalizedE2BWorkspaceConfig,
   compatibility: PersistedWorkspaceCompatibility,
   runtimeVersion: string,
@@ -109,7 +109,7 @@ export async function createWorkspaceSandbox(
 }
 
 function buildSandboxCreateOptions(
-  info: WorkspaceInfo,
+  info: WorkspaceRef,
   config: NormalizedE2BWorkspaceConfig,
   compatibility: PersistedWorkspaceCompatibility,
   logger?: PluginLogger,
@@ -129,7 +129,7 @@ function buildSandboxCreateOptions(
 }
 
 export async function findWorkspaceSandboxRecord(
-  info: WorkspaceInfo,
+  info: WorkspaceRef,
   config: NormalizedE2BWorkspaceConfig,
   logger?: PluginLogger,
   store?: SandboxStore,
@@ -147,7 +147,7 @@ export async function findWorkspaceSandboxRecord(
 }
 
 async function findWorkspaceSandboxRecordUncached(
-  info: WorkspaceInfo,
+  info: WorkspaceRef,
   config: NormalizedE2BWorkspaceConfig,
   logger: PluginLogger | undefined,
   store: SandboxStore | undefined,
@@ -182,7 +182,7 @@ async function findWorkspaceSandboxRecordUncached(
 }
 
 async function readCachedReadySandbox(
-  info: WorkspaceInfo,
+  info: WorkspaceRef,
   config: NormalizedE2BWorkspaceConfig,
   logger: PluginLogger | undefined,
   store: SandboxStore | undefined,
@@ -228,7 +228,7 @@ async function readCachedReadySandbox(
 }
 
 async function listWorkspaceSandboxMatches(
-  info: WorkspaceInfo,
+  info: WorkspaceRef,
   logger?: PluginLogger,
   maxMatches?: number,
 ): Promise<WorkspaceSandboxMatch[]> {
@@ -263,7 +263,7 @@ async function listWorkspaceSandboxMatches(
 }
 
 export async function requireWorkspaceSandboxRecord(
-  info: WorkspaceInfo,
+  info: WorkspaceRef,
   config: NormalizedE2BWorkspaceConfig,
   logger?: PluginLogger,
   store?: SandboxStore,
@@ -293,7 +293,7 @@ export function sandboxTargetHeaders(
 }
 
 export async function removeWorkspaceSandbox(
-  info: WorkspaceInfo,
+  info: WorkspaceRef,
   config: NormalizedE2BWorkspaceConfig,
   logger?: PluginLogger,
   store?: SandboxStore,
@@ -313,7 +313,7 @@ export async function removeWorkspaceSandbox(
 }
 
 async function removeListedWorkspaceSandboxes(
-  info: WorkspaceInfo,
+  info: WorkspaceRef,
   config: NormalizedE2BWorkspaceConfig,
   logger: PluginLogger | undefined,
   store: SandboxStore | undefined,
@@ -348,7 +348,7 @@ async function removeListedWorkspaceSandboxes(
 type CachedRemoveResult = "removed" | "not-found" | "no-cache"
 
 async function removeCachedWorkspaceSandbox(
-  info: WorkspaceInfo,
+  info: WorkspaceRef,
   config: NormalizedE2BWorkspaceConfig,
   logger: PluginLogger | undefined,
   store: SandboxStore | undefined,
@@ -521,7 +521,7 @@ function parseFlags(rawFlags: string | undefined): string[] {
   return []
 }
 
-function buildDuplicateSandboxError(info: WorkspaceInfo, matches: WorkspaceSandboxMatch[]): string {
+function buildDuplicateSandboxError(info: WorkspaceRef, matches: WorkspaceSandboxMatch[]): string {
   const sandboxIds = matches.map((match) => match.sandboxId).join(", ")
   return `Found multiple E2B sandboxes for workspace ${info.id}: ${sandboxIds}`
 }

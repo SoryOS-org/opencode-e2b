@@ -3,10 +3,10 @@ import { posix } from "node:path"
 import type { WorkspaceInfo } from "@opencode-ai/plugin"
 import { Sandbox } from "e2b"
 
-import type { NormalizedE2BWorkspaceConfig, PluginLogger } from "./types.js"
-import { sandboxBaseUrl, sandboxTargetHeaders } from "./e2b.js"
-import { shellSingleQuote } from "./shared.js"
-import { BOOTSTRAP_READY_MARKER, RUNTIME_ENV_FILE } from "./template.js"
+import type { NormalizedE2BWorkspaceConfig, PluginLogger } from "../core/types.js"
+import { sandboxBaseUrl, sandboxTargetHeaders } from "../core/e2b.js"
+import { shellSingleQuote } from "../core/shared.js"
+import { BOOTSTRAP_READY_MARKER, RUNTIME_ENV_FILE } from "../core/template.js"
 
 const SYSTEMD_SERVICE_NAME = "opencode-e2b.service"
 const SHELL_IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/

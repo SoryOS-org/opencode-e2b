@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "bun:test"
 
-import { planExistingSandbox } from "../dist/workspace-create.js"
+import { planExistingSandbox } from "../dist/v1/workspace-create.js"
 
 test("planExistingSandbox creates a sandbox when no existing sandbox was found", () => {
   assert.deepEqual(planExistingSandbox({}), {

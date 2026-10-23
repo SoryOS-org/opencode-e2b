@@ -47,7 +47,8 @@ export function encode(message: ShimMessage | PluginMessage): string {
 
 /**
  * Calls `onMessage` for every complete line that arrives on `socket`, decoded with
- * `schema`. A line that is not a valid message goes to `onInvalid`.
+ * `schema`. The first line that is not a valid message goes to `onInvalid`, and
+ * nothing after it is read.
  */
 export function onMessages<Message>(
   socket: net.Socket,
@@ -56,10 +57,11 @@ export function onMessages<Message>(
   onInvalid: (line: string) => void,
 ): void {
   let buffered = ""
+  let rejected = false
   socket.on("data", (chunk) => {
     buffered += chunk.toString()
     let newline = buffered.indexOf("\n")
-    while (newline >= 0) {
+    while (newline >= 0 && !rejected) {
       const line = buffered.slice(0, newline)
       buffered = buffered.slice(newline + 1)
       newline = buffered.indexOf("\n")
@@ -67,6 +69,7 @@ export function onMessages<Message>(
       if (decoded.success) {
         onMessage(decoded.data)
       } else {
+        rejected = true
         onInvalid(line)
       }
     }

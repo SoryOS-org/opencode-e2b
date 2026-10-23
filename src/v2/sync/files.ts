@@ -150,7 +150,7 @@ export async function gitFingerprint(gitDir: string): Promise<string> {
 
 /** Every file under .git as "<size> <mtime seconds>", keyed relative to .git. Lock files and our own folder are skipped. */
 export async function gitDirFiles(gitDir: string): Promise<GitDirFiles> {
-  const files: ProjectFiles = new Map()
+  const files: GitDirFiles = new Map()
   for (const entry of await readdir(gitDir, { recursive: true, withFileTypes: true })) {
     if (!entry.isFile() || entry.name.endsWith(".lock")) {
       continue

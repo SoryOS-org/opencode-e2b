@@ -5,7 +5,7 @@
 
 import { openAsBlob } from "node:fs"
 import { randomUUID } from "node:crypto"
-import { mkdir, rename, rm, stat } from "node:fs/promises"
+import { lstat, mkdir, rename, rm } from "node:fs/promises"
 import path from "node:path"
 import type { Sandbox } from "e2b"
 import { run } from "./files.js"
@@ -30,8 +30,9 @@ export async function upload(
   paths: string[],
   bookkeeping: { path: string; data: string }[],
 ): Promise<void> {
+  // lstat: a symlink is measured as a link, so it goes in a tarball, which keeps it a link.
   const sized = await Promise.all(
-    paths.map(async (p) => ({ path: p, size: (await stat(path.join(root, p))).size })),
+    paths.map(async (p) => ({ path: p, size: (await lstat(path.join(root, p))).size })),
   )
   const direct = sized.filter((file) => file.size >= DIRECT_BYTES)
   const chunks = chunk(sized.filter((file) => file.size < DIRECT_BYTES))

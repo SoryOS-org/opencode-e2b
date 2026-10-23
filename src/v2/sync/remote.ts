@@ -81,21 +81,33 @@ unset OPENCODE_E2B_ROOT OPENCODE_E2B_COMMAND OPENCODE_E2B_MODE
 sync() { ( export GIT_DIR=${SYNC_GIT_DIR} GIT_WORK_TREE="$root" GIT_LITERAL_PATHSPECS=1; cd "$root" && "$@" ); }
 commit() { sync git diff --cached --quiet || sync git -c user.name=opencode-e2b -c user.email=opencode-e2b@localhost commit -q --no-verify -m "$1" >/dev/null; }
 untar() { tar --warning=no-unknown-keyword -xzf "$1" -C "$root"; }
-locked() { exec 9>/tmp/opencode-e2b.lock; flock 9; rm -f ${SYNC_GIT_DIR}/index.lock; }
+# Holding the lock, no other sync step runs, so an index.lock left behind is stale.
+locked() { exec 9>/tmp/opencode-e2b.lock && flock 9 && rm -f ${SYNC_GIT_DIR}/index.lock; }
 unlock() { flock -u 9; exec 9>&-; }
 failed() { printf '${SYNC_FAILED}%s\\n' "$1" >&2; }
 
-# Unpack each upload, delete what the host deleted, and record it as agreed.
+# Unpack one upload, delete what the host deleted, and record it as agreed.
+apply_entry() {
+  for part in "$1"-*.tgz; do
+    if [ -f "$part" ]; then untar "$part" || return 1; fi
+  done
+  if [ -s "$1.rm" ]; then sync xargs -0 rm -f -- < "$1.rm" || return 1; fi
+  if [ -s "$1.paths" ]; then
+    sync git add -A -f --pathspec-from-file="$1.paths" --pathspec-file-nul >/dev/null || return 1
+    commit 'sync from host' || return 1
+  fi
+}
+
+# Apply every upload in the spool, in name order, which is upload order (names start
+# with a timestamp). An entry that fails moves to spool/failed, so it cannot block the
+# next command: the plugin then reads the sandbox's state again and sends the difference.
 apply_spool() {
-  for paths in $(ls ${SPOOL}/*.paths 2>/dev/null | sort); do
-    id=${SPOOL}/$(basename "$paths" .paths)
-    for part in "$id"-*.tgz; do
-      if [ -f "$part" ]; then untar "$part" || return 1; fi
-    done
-    if [ -s "$id.rm" ]; then sync xargs -0 rm -f -- < "$id.rm" || return 1; fi
-    if [ -s "$paths" ]; then
-      sync git add -A -f --pathspec-from-file="$paths" --pathspec-file-nul >/dev/null || return 1
-      commit 'sync from host' || return 1
+  for paths in ${SPOOL}/*.paths; do
+    [ -e "$paths" ] || continue
+    id=\${paths%.paths}
+    if ! apply_entry "$id"; then
+      mkdir -p ${SPOOL}/failed && mv "$id"-*.tgz "$id.rm" "$paths" ${SPOOL}/failed/ 2>/dev/null
+      return 1
     fi
     rm -f "$id"-*.tgz "$id.rm" "$paths"
   done
@@ -109,19 +121,26 @@ report_changes() {
     tgz=/tmp/opencode-e2b-out-$$.tgz
     sync xargs -0 git ls-files -z -- < "$changed" | sync tar -czf "$tgz" --null -T - || return 1
     state=$(sync xargs -0 git ls-files -s -z -- < "$changed" | base64 -w0) || return 1
-    commit 'sync to host' || return 1
+    names=$(base64 -w0 < "$changed") || return 1
     # Small changes travel inline, which saves a round trip to fetch the tarball.
     if [ "$(stat -c %s "$tgz")" -le ${INLINE_LIMIT} ]; then
-      where="inline:$(base64 -w0 < "$tgz")"; rm -f "$tgz"
+      encoded=$(base64 -w0 < "$tgz") || return 1
+      where="inline:$encoded"
     else
       where=$tgz
     fi
-    printf '${SYNC_MARK}%s %s %s\\n' "$where" "$(base64 -w0 < "$changed")" "$state" >&2
+    # Record the new agreed state only once the report is ready.
+    commit 'sync to host' || return 1
+    if [ "$where" != "$tgz" ]; then rm -f "$tgz"; fi
+    printf '${SYNC_MARK}%s %s %s\\n' "$where" "$names" "$state" >&2
   fi
   rm -f "$changed"
 }
 
-locked
+if ! locked; then
+  failed "the sync lock could not be taken, so the command did not run"
+  exit ${APPLY_FAILED_EXIT}
+fi
 if ! apply_spool; then
   failed "your changes could not be applied in the sandbox, so the command did not run"
   unlock
@@ -138,9 +157,12 @@ tail -s 0.02 -n +1 --pid="$pid" -f "$out"
 wait "$pid"; rc=$?
 rm -f "$out" /tmp/opencode-e2b-$$.pgid
 
-locked
-report_changes || failed "the files the command changed could not be collected, so they may not be on your machine"
-unlock
+if locked; then
+  report_changes || failed "the files the command changed could not be collected, so they may not be on your machine"
+  unlock
+else
+  failed "the sync lock could not be taken, so the files the command changed may not be on your machine"
+fi
 exit "$rc"
 `
 

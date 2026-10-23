@@ -47,7 +47,7 @@ export interface Pulled {
 export interface State {
   files: ProjectFiles
   /** Files under .git as last sent, keyed relative to .git. */
-  git?: { fingerprint: string; files: GitDirFiles }
+  git?: { fingerprint: string; files: GitDirFiles; skipped?: string }
 }
 
 /** With git: 'auto', history is sent only up to this size. A 600 MB .git takes about 2 minutes to upload. */
@@ -75,19 +75,25 @@ export async function push(
     () => false,
   )
   let gitSkipped: string | undefined
-  if (shipGit !== false && isGitDir) {
+  if (shipGit !== false && !isGitDir) {
+    gitSkipped = "the project's .git is not a folder (a linked worktree or a submodule)"
+  } else if (shipGit !== false) {
     const fingerprint = await gitFingerprint(gitDir)
-    const files = fingerprint === git?.fingerprint ? undefined : await gitDirFiles(gitDir)
-    const total = files ? gitDirBytes(files) : 0
-    if (files && shipGit === "auto" && total > GIT_AUTO_MAX_BYTES) {
-      gitSkipped = `.git is ${Math.round(total / 1024 / 1024)} MB, over the ${GIT_AUTO_MAX_BYTES / 1024 / 1024} MB limit for git: "auto"`
-      // Remember the fingerprint, so .git is not scanned again until it changes.
-      git = { fingerprint, files: git?.files ?? new Map() }
-    } else if (files) {
-      const d = diff(git?.files ?? new Map(), files)
-      gitChanged.push(...d.changed.map((p) => `.git/${p}`))
-      gitRemoved.push(...d.removed.map((p) => `.git/${p}`))
-      git = { fingerprint, files }
+    if (fingerprint === git?.fingerprint) {
+      gitSkipped = git.skipped
+    } else {
+      const files = await gitDirFiles(gitDir)
+      const total = gitDirBytes(files)
+      if (shipGit === "auto" && total > GIT_AUTO_MAX_BYTES) {
+        gitSkipped = `.git is ${Math.round(total / 1024 / 1024)} MB, over the ${GIT_AUTO_MAX_BYTES / 1024 / 1024} MB limit for git: "auto"`
+        // Remember the fingerprint and the reason, so .git is not scanned again until it changes.
+        git = { fingerprint, files: git?.files ?? new Map(), skipped: gitSkipped }
+      } else {
+        const d = diff(git?.files ?? new Map(), files)
+        gitChanged.push(...d.changed.map((p) => `.git/${p}`))
+        gitRemoved.push(...d.removed.map((p) => `.git/${p}`))
+        git = { fingerprint, files }
+      }
     }
   }
 

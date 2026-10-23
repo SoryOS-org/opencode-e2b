@@ -189,11 +189,12 @@ export function createBox(storage: Storage, root: string, key: string, opts: Box
     },
     async clearSnapshot() {
       const saved = await read(snapshotKey, SavedSnapshot)
-      await storage.remove(snapshotKey)
       if (saved) {
-        // deleteSnapshot resolves false when the snapshot is already gone. Other failures surface.
+        // Delete first: if that fails, the record stays, so clearing again retries it.
+        // deleteSnapshot resolves false when the snapshot is already gone.
         await Sandbox.deleteSnapshot(saved.snapshotId, api)
       }
+      await storage.remove(snapshotKey)
       return saved !== undefined
     },
     savedSnapshot: () => read(snapshotKey, SavedSnapshot),

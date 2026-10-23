@@ -12,7 +12,7 @@
 
 import { Sandbox, type SandboxMetrics, type SandboxNetworkOpts, SandboxNotFoundError } from "e2b"
 import type { Plugin } from "@opencode/plugin"
-import { init } from "./sync.js"
+import { init } from "./remote.js"
 
 export interface BoxOptions {
   apiKey?: string

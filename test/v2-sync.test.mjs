@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { test } from "bun:test"
-import { diff, hostFiles, parseIndex, run } from "../dist/v2/sync.js"
+import { diff, hostFiles, parseIndex, run } from "../dist/v2/files.js"
 
 test("parseIndex reads modes and hashes and skips submodules", () => {
   const out = ["100644 aaa 0\ta.txt", "100755 bbb 0\tbin/run", "160000 ccc 0\tvendor/lib", ""].join("\x00")

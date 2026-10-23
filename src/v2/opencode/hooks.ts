@@ -5,11 +5,11 @@
 
 import { fileURLToPath } from "node:url"
 import type { PluginContext } from "./context.js"
-import { GIT_WRITE, NO_HOOKS, isLocalGit } from "./git.js"
-import { ENV } from "./protocol.js"
+import { GIT_WRITE, NO_HOOKS, isLocalGit } from "../shell/git.js"
+import { ENV } from "../shell/protocol.js"
 
-// dist/v2/hooks.js -> bin/bash at the package root.
-const SHIM = fileURLToPath(new URL("../../bin/bash", import.meta.url))
+// dist/v2/opencode/hooks.js -> bin/bash at the package root.
+const SHIM = fileURLToPath(new URL("../../../bin/bash", import.meta.url))
 /** OpenCode tools that change files on the host. Their changes go to the sandbox right away. */
 const EDIT_TOOLS = new Set(["edit", "write", "patch"])
 const SANDBOX_NOTE = [

@@ -2,4 +2,4 @@
 # OpenCode 2 runs this as its shell (`bash -c "<command>"`) when the e2b plugin is on.
 # It runs the shim with OpenCode's own runtime, so nothing else needs to be installed.
 here=$(cd "$(dirname "$0")/.." && pwd)
-BUN_BE_BUN=1 exec "$OPENCODE_E2B_RUNTIME" "$here/dist/v2/shim.js" "$@"
+BUN_BE_BUN=1 exec "$OPENCODE_E2B_RUNTIME" "$here/dist/v2/shell/shim.js" "$@"

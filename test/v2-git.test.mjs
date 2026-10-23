@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "bun:test"
-import { GIT_WRITE, isLocalGit } from "../dist/v2/git.js"
+import { GIT_WRITE, isLocalGit } from "../dist/v2/shell/git.js"
 
 test("plain git commands run on the user machine", () => {
   for (const command of [

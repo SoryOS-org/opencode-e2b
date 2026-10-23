@@ -1,7 +1,7 @@
 /** One status, in two views: the full text for /e2b-status and e2b_status, and one line for the TUI. */
 
 import type { PluginContext } from "./context.js"
-import { describeNetwork } from "./options.js"
+import { describeNetwork } from "../options.js"
 
 export async function readStatus(plugin: PluginContext): Promise<{ text: string; line: string }> {
   const { opts, root, project, box, runner, mode } = plugin

@@ -6,12 +6,10 @@
  * so OpenCode keeps its own permission checks, timeouts, background jobs and output
  * handling, and only the process runs somewhere else.
  *
- *   hooks.ts     where commands run, sync after edits, warm start, git rules
- *   tools.ts     tools for the agent
- *   commands.ts  slash commands for the user
- *   server.ts    the socket the shim (shim.ts) talks to, see protocol.ts
- *   runner.ts    runs a command in the sandbox with the sync around it (sync.ts)
- *   box.ts       one sandbox per project
+ *   opencode/  the OpenCode side: hooks, tools, commands, status
+ *   shell/     the shell redirect: shim, the socket it talks to, the runner, git routing
+ *   sync/      keeping the sandbox copy equal to the host copy around each command
+ *   sandbox/   one E2B sandbox per project
  */
 
 import { createHash } from "node:crypto"
@@ -19,15 +17,15 @@ import os from "node:os"
 import path from "node:path"
 import type { Plugin } from "@opencode/plugin"
 import "../core/e2b-sdk.js"
-import { createBox } from "./box.js"
-import { registerCommands } from "./commands.js"
-import { createMode } from "./context.js"
-import { gitRoot } from "./files.js"
-import { registerHooks } from "./hooks.js"
+import { createBox } from "./sandbox/box.js"
+import { registerCommands } from "./opencode/commands.js"
+import { createMode } from "./opencode/context.js"
+import { gitRoot } from "./sync/files.js"
+import { registerHooks } from "./opencode/hooks.js"
 import { networkFor, parseOptions } from "./options.js"
-import { createRunner } from "./runner.js"
-import { startServer } from "./server.js"
-import { registerTools } from "./tools.js"
+import { createRunner } from "./shell/runner.js"
+import { startServer } from "./shell/server.js"
+import { registerTools } from "./opencode/tools.js"
 
 const plugin: Plugin.Plugin = {
   id: "e2b",

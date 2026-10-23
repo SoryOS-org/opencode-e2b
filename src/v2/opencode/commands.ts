@@ -3,7 +3,7 @@
 import type { Plugin } from "@opencode/plugin"
 import type { PluginContext } from "./context.js"
 import { readStatus } from "./status.js"
-import { fetchPaths } from "./transfer.js"
+import { fetchPaths } from "../sync/transfer.js"
 
 type SessionID = Parameters<Plugin.Context["session"]["synthetic"]>[0]["sessionID"]
 

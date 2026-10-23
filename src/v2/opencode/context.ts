@@ -1,9 +1,9 @@
 /** What the plugin's hooks, tools and commands share. */
 
 import type { Plugin } from "@opencode/plugin"
-import type { Box } from "./box.js"
-import type { Options } from "./options.js"
-import type { Runner } from "./runner.js"
+import type { Box } from "../sandbox/box.js"
+import type { Options } from "../options.js"
+import type { Runner } from "../shell/runner.js"
 
 /** Whether commands run in the sandbox or on the user's machine, per project. Kept in plugin storage. */
 export interface Mode {

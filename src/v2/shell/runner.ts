@@ -4,10 +4,10 @@
  */
 
 import { type Sandbox, SandboxNotFoundError } from "e2b"
-import type { Box } from "./box.js"
+import type { Box } from "../sandbox/box.js"
 import type { RunRequest } from "./protocol.js"
-import { applySpool, boxState, parseReport, runCommand, syncWarnings } from "./remote.js"
-import { type Pulled, type State, pull, push } from "./sync.js"
+import { applySpool, boxState, parseReport, runCommand, syncWarnings } from "../sync/remote.js"
+import { type Pulled, type State, pull, push } from "../sync/push-pull.js"
 
 export interface SyncInfo {
   at: Date

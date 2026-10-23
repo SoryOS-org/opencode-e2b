@@ -6,8 +6,8 @@
 
 import { CommandExitError, type Sandbox } from "e2b"
 import { type Files, parseIndex, parseTree } from "./files.js"
-import type { RunRequest } from "./protocol.js"
-import type { State } from "./sync.js"
+import type { RunRequest } from "../shell/protocol.js"
+import type { State } from "./push-pull.js"
 
 export const SYNC_GIT_DIR = "/home/user/.opencode-e2b/sync.git"
 export const SPOOL = "/home/user/.opencode-e2b/spool"

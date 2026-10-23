@@ -85,7 +85,7 @@ bun run typecheck
 bun run test
 ```
 
-The plugin is loaded by OpenCode's Bun runtime and uses Bun as its development runtime. `bun run test` builds `dist/` first, then runs the Bun test runner against `test/*.test.mjs`.
+The plugin is loaded by OpenCode's Bun runtime and uses Bun as its development runtime. `bun run test` builds `dist/` first, then runs the Bun test runner against `test/*.test.ts`.
 
 Layout:
 

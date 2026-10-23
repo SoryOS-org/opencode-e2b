@@ -8,7 +8,7 @@ import { fetchPaths } from "../sync/transfer.js"
 type SessionID = Parameters<Plugin.Context["session"]["synthetic"]>[0]["sessionID"]
 
 export async function registerCommands(plugin: PluginContext): Promise<void> {
-  const { opencode, opts, root, box, mode } = plugin
+  const { opencode, opts, root, box, sandboxSwitch } = plugin
 
   // A command's result goes to the session as a synthetic message. The TUI shows only
   // its description, so that carries the answer; the text is the full version for the model.
@@ -91,7 +91,7 @@ export async function registerCommands(plugin: PluginContext): Promise<void> {
       name: "e2b-off",
       description: "Run commands on your machine again, for this project",
       execute: async ({ sessionID }) => {
-        await mode.set(true)
+        await sandboxSwitch.setEnabled(false)
         await reply(sessionID, "Commands now run on your machine. /e2b-on switches back to the sandbox.")
       },
     })
@@ -100,7 +100,7 @@ export async function registerCommands(plugin: PluginContext): Promise<void> {
       name: "e2b-on",
       description: "Run commands in the E2B sandbox again, for this project",
       execute: async ({ sessionID }) => {
-        await mode.set(false)
+        await sandboxSwitch.setEnabled(true)
         await reply(sessionID, "Commands now run in the E2B sandbox.")
       },
     })

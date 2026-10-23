@@ -5,13 +5,16 @@
  */
 
 import { CommandExitError, type Sandbox } from "e2b"
-import { type Files, parseIndex, parseTree } from "./files.js"
-import type { RunRequest } from "../shell/protocol.js"
+import { type GitDirFiles, type ProjectFiles, parseIndex, parseTree } from "./files.js"
 import type { State } from "./push-pull.js"
 
 export const SYNC_GIT_DIR = "/home/user/.opencode-e2b/sync.git"
 export const SPOOL = "/home/user/.opencode-e2b/spool"
 export const SYNC_MARK = "OPENCODE_E2B_SYNC "
+/** Starts a line in which the wrapper reports a failed sync step. */
+export const SYNC_FAILED = "OPENCODE_E2B_SYNC_FAILED "
+/** The wrapper's exit code when it could not apply the spool and did not run the command. */
+export const APPLY_FAILED_EXIT = 97
 const INLINE_LIMIT = 256 * 1024
 
 export async function sh(sandbox: Sandbox, command: string, envs?: Record<string, string>): Promise<string> {
@@ -50,7 +53,7 @@ export async function boxState(sandbox: Sandbox, root: string): Promise<State> {
     `GIT_DIR=${SYNC_GIT_DIR} git ls-tree -r -z HEAD; printf '\\0--git--\\0'; if [ -d ${gitDir} ]; then cd ${gitDir} && find . -type f ! -name '*.lock' -printf '%P\\t%s %T@\\0'; fi`,
   )
   const [tree = "", gitList = ""] = out.split("\0--git--\0")
-  const git: Files = new Map()
+  const git: GitDirFiles = new Map()
   for (const entry of gitList.split("\0")) {
     const tab = entry.indexOf("\t")
     if (tab > 0) {
@@ -70,24 +73,60 @@ export async function boxState(sandbox: Sandbox, root: string): Promise<State> {
  * packs what changed and reports it on stderr, which the command's output never uses.
  */
 export const WRAPPER = `
+set -o pipefail
 root=$OPENCODE_E2B_ROOT; cmd=$OPENCODE_E2B_COMMAND; mode=$OPENCODE_E2B_MODE
 unset OPENCODE_E2B_ROOT OPENCODE_E2B_COMMAND OPENCODE_E2B_MODE
 # Sync steps run in subshells, so GIT_DIR never reaches the user's command. Paths are
 # literal: a file named routes/[id].tsx must not be read as a glob.
 sync() { ( export GIT_DIR=${SYNC_GIT_DIR} GIT_WORK_TREE="$root" GIT_LITERAL_PATHSPECS=1; cd "$root" && "$@" ); }
-git_id='-c user.name=opencode-e2b -c user.email=opencode-e2b@localhost'
+commit() { sync git diff --cached --quiet || sync git -c user.name=opencode-e2b -c user.email=opencode-e2b@localhost commit -q --no-verify -m "$1" >/dev/null; }
 untar() { tar --warning=no-unknown-keyword -xzf "$1" -C "$root"; }
 locked() { exec 9>/tmp/opencode-e2b.lock; flock 9; rm -f ${SYNC_GIT_DIR}/index.lock; }
 unlock() { flock -u 9; exec 9>&-; }
+failed() { printf '${SYNC_FAILED}%s\\n' "$1" >&2; }
+
+# Unpack each upload, delete what the host deleted, and record it as agreed.
+apply_spool() {
+  for paths in $(ls ${SPOOL}/*.paths 2>/dev/null | sort); do
+    id=${SPOOL}/$(basename "$paths" .paths)
+    for part in "$id"-*.tgz; do
+      if [ -f "$part" ]; then untar "$part" || return 1; fi
+    done
+    if [ -s "$id.rm" ]; then sync xargs -0 rm -f -- < "$id.rm" || return 1; fi
+    if [ -s "$paths" ]; then
+      sync git add -A -f --pathspec-from-file="$paths" --pathspec-file-nul >/dev/null || return 1
+      commit 'sync from host' || return 1
+    fi
+    rm -f "$id"-*.tgz "$id.rm" "$paths"
+  done
+}
+
+# List and pack what the command changed, record it as agreed, and report it on stderr.
+report_changes() {
+  changed=$(mktemp)
+  sync git add -A -- . >/dev/null && sync git diff --cached --name-only -z HEAD > "$changed" || return 1
+  if [ -s "$changed" ]; then
+    tgz=/tmp/opencode-e2b-out-$$.tgz
+    sync xargs -0 git ls-files -z -- < "$changed" | sync tar -czf "$tgz" --null -T - || return 1
+    state=$(sync xargs -0 git ls-files -s -z -- < "$changed" | base64 -w0) || return 1
+    commit 'sync to host' || return 1
+    # Small changes travel inline, which saves a round trip to fetch the tarball.
+    if [ "$(stat -c %s "$tgz")" -le ${INLINE_LIMIT} ]; then
+      where="inline:$(base64 -w0 < "$tgz")"; rm -f "$tgz"
+    else
+      where=$tgz
+    fi
+    printf '${SYNC_MARK}%s %s %s\\n' "$where" "$(base64 -w0 < "$changed")" "$state" >&2
+  fi
+  rm -f "$changed"
+}
 
 locked
-for paths in $(ls ${SPOOL}/*.paths 2>/dev/null | sort); do
-  id=${SPOOL}/$(basename "$paths" .paths)
-  for part in "$id"-*.tgz; do [ -f "$part" ] && untar "$part"; done
-  [ -s "$id.rm" ] && sync xargs -0 rm -f -- < "$id.rm"
-  [ -s "$paths" ] && sync git add -A -f --pathspec-from-file="$paths" --pathspec-file-nul >/dev/null && sync git $git_id commit -q --no-verify -m 'sync from host' >/dev/null
-  rm -f "$id"-*.tgz "$id.rm" "$paths"
-done
+if ! apply_spool; then
+  failed "your changes could not be applied in the sandbox, so the command did not run"
+  unlock
+  exit ${APPLY_FAILED_EXIT}
+fi
 unlock
 [ "$mode" = sync ] && exit 0
 
@@ -100,22 +139,7 @@ wait "$pid"; rc=$?
 rm -f "$out" /tmp/opencode-e2b-$$.pgid
 
 locked
-changed=$(mktemp)
-sync git add -A -- . >/dev/null && sync git diff --cached --name-only -z HEAD > "$changed"
-if [ -s "$changed" ]; then
-  tgz=/tmp/opencode-e2b-out-$$.tgz
-  sync xargs -0 git ls-files -z -- < "$changed" | sync tar -czf "$tgz" --null -T -
-  state=$(sync xargs -0 git ls-files -s -z -- < "$changed" | base64 -w0)
-  sync git $git_id commit -q --no-verify -m 'sync to host' >/dev/null
-  # Small changes travel inline, which saves a round trip to fetch the tarball.
-  if [ "$(stat -c %s "$tgz")" -le ${INLINE_LIMIT} ]; then
-    where="inline:$(base64 -w0 < "$tgz")"; rm -f "$tgz"
-  else
-    where=$tgz
-  fi
-  printf '${SYNC_MARK}%s %s %s\\n' "$where" "$(base64 -w0 < "$changed")" "$state" >&2
-fi
-rm -f "$changed"
+report_changes || failed "the files the command changed could not be collected, so they may not be on your machine"
 unlock
 exit "$rc"
 `
@@ -124,7 +148,7 @@ exit "$rc"
 export interface Report {
   tarball: string
   paths: string[]
-  files: Files
+  files: ProjectFiles
 }
 
 export function parseReport(stderr: string): Report | undefined {
@@ -145,65 +169,17 @@ export async function applySpool(sandbox: Sandbox, root: string): Promise<void> 
   await sh(sandbox, WRAPPER, { OPENCODE_E2B_ROOT: root, OPENCODE_E2B_COMMAND: "", OPENCODE_E2B_MODE: "sync" })
 }
 
-/**
- * Run one command in the sandbox through the wrapper, streaming its output. Resolves
- * with the exit code and the wrapper's own stderr, which carries the sync report.
- */
-export async function runCommand(
-  sandbox: Sandbox,
-  root: string,
-  request: RunRequest,
-  onData: (data: string) => void,
-  killed: AbortSignal,
-  keepAlive: () => void,
-): Promise<{ code: number; stderr: string }> {
-  let stderr = ""
-  const handle = await sandbox.commands.run(WRAPPER, {
-    background: true,
-    cwd: request.cwd,
-    // The host env is not forwarded: it holds model API keys and other secrets.
-    envs: {
-      ...request.env,
-      OPENCODE_E2B_ROOT: root,
-      OPENCODE_E2B_COMMAND: request.command,
-      OPENCODE_E2B_MODE: "run",
-    },
-    timeoutMs: 0,
-    onStdout: onData,
-    onStderr: (data) => {
-      stderr += data
-    },
-  })
-  // Kill the command's process group only. The wrapper then finishes its sync step
-  // and exits, so a cancel never leaves the bookkeeping half-written.
-  const stop = () => {
-    const group = `$(cat /tmp/opencode-e2b-${handle.pid}.pgid 2>/dev/null)`
-    sandbox.commands
-      .run(
-        `g=${group}; [ -n "$g" ] && { kill -TERM -- -$g; sleep 1; kill -KILL -- -$g; } 2>/dev/null; true`,
-        {
-          timeoutMs: 10_000,
-        },
-      )
-      .catch(() => handle.kill())
-  }
-  killed.addEventListener("abort", stop, { once: true })
-  // Long commands must not hit the idle timeout.
-  const heartbeat = setInterval(keepAlive, 60_000)
-  try {
-    return { code: (await handle.wait()).exitCode, stderr }
-  } catch (err) {
-    if (err instanceof CommandExitError) {
-      return { code: err.exitCode, stderr }
-    }
-    throw err
-  } finally {
-    clearInterval(heartbeat)
-    killed.removeEventListener("abort", stop)
-  }
+/** A sync step that failed in the wrapper, if one did. */
+export function syncFailure(stderr: string): string | undefined {
+  return stderr
+    .split("\n")
+    .find((line) => line.startsWith(SYNC_FAILED))
+    ?.slice(SYNC_FAILED.length)
 }
 
-/** Lines the wrapper wrote to stderr that are not the sync report: real problems to show. */
+/** Lines the wrapper wrote to stderr that are not its own reports: real problems to show. */
 export function syncWarnings(stderr: string): string[] {
-  return stderr.split("\n").filter((line) => line.trim() !== "" && !line.startsWith(SYNC_MARK))
+  return stderr
+    .split("\n")
+    .filter((line) => line.trim() !== "" && !line.startsWith(SYNC_MARK) && !line.startsWith(SYNC_FAILED))
 }

@@ -22,7 +22,16 @@ import { randomUUID } from "node:crypto"
 import { rm, stat } from "node:fs/promises"
 import path from "node:path"
 import type { Sandbox } from "e2b"
-import { type Files, diff, gitDirFiles, gitFingerprint, hostFiles, run } from "./files.js"
+import {
+  type GitDirFiles,
+  type ProjectFiles,
+  diff,
+  gitDirBytes,
+  gitDirFiles,
+  gitFingerprint,
+  hostFiles,
+  run,
+} from "./files.js"
 import { type Report, SPOOL } from "./remote.js"
 import { download, unpack, upload } from "./transfer.js"
 
@@ -36,9 +45,9 @@ export interface Pulled {
 
 /** What the plugin remembers about the sandbox between commands. */
 export interface State {
-  files: Files
+  files: ProjectFiles
   /** Files under .git as last sent, keyed relative to .git. */
-  git?: { fingerprint: string; files: Files }
+  git?: { fingerprint: string; files: GitDirFiles }
 }
 
 /** With git: 'auto', history is sent only up to this size. A 600 MB .git takes about 2 minutes to upload. */
@@ -69,7 +78,7 @@ export async function push(
   if (shipGit !== false && isGitDir) {
     const fingerprint = await gitFingerprint(gitDir)
     const files = fingerprint === git?.fingerprint ? undefined : await gitDirFiles(gitDir)
-    const total = files ? [...files.values()].reduce((sum, v) => sum + Number(v.split(" ")[0]), 0) : 0
+    const total = files ? gitDirBytes(files) : 0
     if (files && shipGit === "auto" && total > GIT_AUTO_MAX_BYTES) {
       gitSkipped = `.git is ${Math.round(total / 1024 / 1024)} MB, over the ${GIT_AUTO_MAX_BYTES / 1024 / 1024} MB limit for git: "auto"`
       // Remember the fingerprint, so .git is not scanned again until it changes.

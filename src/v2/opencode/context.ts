@@ -5,10 +5,10 @@ import type { Box } from "../sandbox/box.js"
 import type { Options } from "../options.js"
 import type { Runner } from "../shell/runner.js"
 
-/** Whether commands run in the sandbox or on the user's machine, per project. Kept in plugin storage. */
-export interface Mode {
-  readonly off: boolean
-  set(off: boolean): Promise<void>
+/** Whether commands run in the sandbox (enabled) or on the user's machine, per project. Kept in plugin storage. */
+export interface SandboxSwitch {
+  readonly enabled: boolean
+  setEnabled(enabled: boolean): Promise<void>
 }
 
 export interface PluginContext {
@@ -20,18 +20,22 @@ export interface PluginContext {
   project: string
   box: Box
   runner: Runner
-  mode: Mode
+  sandboxSwitch: SandboxSwitch
 }
 
-export async function createMode(storage: Plugin.Context["storage"], key: string): Promise<Mode> {
-  let off = (await storage.get(key)) === true
+/** Stored as `off: true` when the user turned the sandbox off, so the default is on. */
+export async function createSandboxSwitch(
+  storage: Plugin.Context["storage"],
+  key: string,
+): Promise<SandboxSwitch> {
+  let enabled = (await storage.get(key)) !== true
   return {
-    get off() {
-      return off
+    get enabled() {
+      return enabled
     },
-    async set(value) {
-      off = value
-      await storage.set(key, value)
+    async setEnabled(value) {
+      enabled = value
+      await storage.set(key, !value)
     },
   }
 }

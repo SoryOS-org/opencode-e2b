@@ -19,7 +19,7 @@ import type { Plugin } from "@opencode/plugin"
 import "../core/e2b-sdk.js"
 import { createBox } from "./sandbox/box.js"
 import { registerCommands } from "./opencode/commands.js"
-import { createMode } from "./opencode/context.js"
+import { createSandboxSwitch } from "./opencode/context.js"
 import { gitRoot } from "./sync/files.js"
 import { registerHooks } from "./opencode/hooks.js"
 import { networkFor, parseOptions } from "./options.js"
@@ -30,7 +30,7 @@ import { registerTools } from "./opencode/tools.js"
 const plugin: Plugin.Plugin = {
   id: "e2b",
   async setup(opencode) {
-    const opts = parseOptions(opencode.options as Record<string, unknown> | undefined)
+    const opts = parseOptions(opencode.options)
     const root = await gitRoot(opencode.location.directory)
     const project = root ?? opencode.location.directory
     const key = createHash("sha256").update(project).digest("hex").slice(0, 16)
@@ -47,9 +47,9 @@ const plugin: Plugin.Plugin = {
       path.join(os.tmpdir(), `opencode-e2b-${process.pid}-${key}.sock`),
       runner,
     )
-    const mode = await createMode(opencode.storage, `off:${key}`)
+    const sandboxSwitch = await createSandboxSwitch(opencode.storage, `off:${key}`)
 
-    const context = { opencode, opts, root, project, box, runner, mode }
+    const context = { opencode, opts, root, project, box, runner, sandboxSwitch }
     await registerHooks(context, server.socket)
     await registerTools(context)
     await registerCommands(context)

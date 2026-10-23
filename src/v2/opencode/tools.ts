@@ -1,6 +1,7 @@
 /** Tools for the agent: a preview link, reading sandbox-only files, and the status. */
 
 import path from "node:path"
+import * as z from "zod"
 import type { PluginContext } from "./context.js"
 import { readStatus } from "./status.js"
 
@@ -14,14 +15,8 @@ export async function registerTools(plugin: PluginContext): Promise<void> {
       description:
         "Get the public URL of a port served in the E2B sandbox. Use it after you start a server, so the user gets a link. The server must listen on 0.0.0.0.",
       options: { codemode: false },
-      input: {
-        type: "object",
-        properties: { port: { type: "integer", minimum: 1, maximum: 65535 } },
-        required: ["port"],
-        additionalProperties: false,
-      },
-      async execute(input) {
-        const { port } = input as { port: number }
+      input: z.object({ port: z.int().min(1).max(65535) }),
+      async execute({ port }) {
         const sandbox = await box.get()
         return { content: `https://${sandbox.getHost(port)}` }
       },
@@ -31,14 +26,8 @@ export async function registerTools(plugin: PluginContext): Promise<void> {
       name: "e2b_read",
       description: `Read a text file from the E2B sandbox, for files that exist only there (build output, coverage, logs, node_modules). Relative paths are relative to the project. Returns at most ${READ_LIMIT} bytes from offset.`,
       options: { codemode: false },
-      input: {
-        type: "object",
-        properties: { path: { type: "string" }, offset: { type: "integer", minimum: 0 } },
-        required: ["path"],
-        additionalProperties: false,
-      },
-      async execute(input) {
-        const { path: file, offset = 0 } = input as { path: string; offset?: number }
+      input: z.object({ path: z.string().min(1), offset: z.int().min(0).default(0) }),
+      async execute({ path: file, offset }) {
         const sandbox = await box.get()
         const bytes = await sandbox.files.read(path.resolve(project, file), { format: "bytes" })
         const slice = Buffer.from(bytes).subarray(offset, offset + READ_LIMIT)
@@ -57,7 +46,7 @@ export async function registerTools(plugin: PluginContext): Promise<void> {
       description:
         "Show the E2B sandbox state: where commands run, the sandbox id, CPU, memory and disk use, network rules, and the last file sync.",
       options: { codemode: false },
-      input: { type: "object", properties: {}, additionalProperties: false },
+      input: z.object({}),
       execute: async () => ({ content: (await readStatus(plugin)).text }),
     })
   })

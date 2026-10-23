@@ -6,7 +6,7 @@
 
 import { rmSync } from "node:fs"
 import net from "node:net"
-import { type PluginMessage, type ShimMessage, encode, onMessages } from "./protocol.js"
+import { type PluginMessage, ShimMessage, encode, onMessages } from "./protocol.js"
 import { type Runner, errorText } from "./runner.js"
 
 export interface Server {
@@ -29,23 +29,44 @@ export function startServer(socket: string, runner: Runner): Promise<Server> {
       },
     }
     let started = false
-    onMessages<ShimMessage>(conn, (message) => {
-      if (message.type === "kill") {
-        killed.abort()
-      } else if (!started) {
-        started = true
-        runner
-          .run(message, output, killed.signal)
-          .then(
-            (code) => send({ type: "exit", code }),
-            (err: unknown) => send({ type: "error", message: errorText(err) }),
-          )
-          .finally(() => conn.end())
-      }
-    })
+    onMessages(
+      conn,
+      ShimMessage,
+      (message) => {
+        if (message.type === "kill") {
+          killed.abort()
+        } else if (!started) {
+          started = true
+          runner
+            .run(message, output, killed.signal)
+            .then(
+              (code) => {
+                send({ type: "exit", code })
+              },
+              (err) => {
+                send({ type: "error", message: errorText(err) })
+              },
+            )
+            .finally(() => {
+              conn.end()
+            })
+        }
+      },
+      (line) => {
+        send({
+          type: "error",
+          message: `opencode-e2b: the shim sent a message the plugin cannot read: ${line.slice(0, 200)}`,
+        })
+        conn.end()
+      },
+    )
     // The shim died, for example killed by OpenCode: stop the command too.
-    conn.on("close", () => killed.abort())
-    conn.on("error", () => killed.abort())
+    conn.on("close", () => {
+      killed.abort()
+    })
+    conn.on("error", () => {
+      killed.abort()
+    })
   })
 
   rmSync(socket, { force: true })

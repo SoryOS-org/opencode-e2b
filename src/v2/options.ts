@@ -6,104 +6,55 @@
  * HTTPS requests as they leave the sandbox, so the sandbox never sees it.
  */
 
+import type { Plugin } from "@opencode/plugin"
 import { Secret, type SandboxNetworkOpts } from "e2b"
+import * as z from "zod"
 
-export interface SecretRule {
-  /** Name of a secret stored in E2B. */
-  secret: string
-  /** Request header to set. */
-  header: string
-  /** Text before the secret in the header value, for example "Bearer ". */
-  prefix: string
-}
+const name = z.string().min(1)
 
-export interface Options {
-  domain?: string
-  template: string
-  idleMs: number
-  env: string[]
-  /** Send .git to the sandbox: always, never, or 'auto' (only when it is small enough). */
-  git: boolean | "auto"
-  allowOut?: string[]
-  denyOut?: string[]
-  /** host -> how to inject a stored secret into requests to that host */
-  secrets: Record<string, SecretRule>
-}
+/** A secret name alone means `Authorization: Bearer <secret>`. */
+const SecretRule = z.union([
+  name.transform((secret) => ({ secret, header: "Authorization", prefix: "Bearer " })),
+  z.object({
+    /** Name of a secret stored in E2B. */
+    secret: name,
+    /** Request header to set. */
+    header: name.default("Authorization"),
+    /** Text before the secret in the header value. */
+    prefix: z.string().default("Bearer "),
+  }),
+])
 
-const DEFAULT_TEMPLATE = "opencode"
-
-function stringList(value: unknown, name: string): string[] | undefined {
-  if (value === undefined) {
-    return undefined
-  }
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string" && item !== "")) {
-    throw new TypeError(`opencode-e2b option ${name} must be a list of strings`)
-  }
-  return value
-}
-
-function secretRule(host: string, value: unknown): SecretRule {
-  if (typeof value === "string" && value !== "") {
-    return { secret: value, header: "Authorization", prefix: "Bearer " }
-  }
-  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-    const { secret, header = "Authorization", prefix = "Bearer " } = value as Record<string, unknown>
-    if (
-      typeof secret === "string" &&
-      secret !== "" &&
-      typeof header === "string" &&
-      header !== "" &&
-      typeof prefix === "string"
-    ) {
-      return { secret, header, prefix }
-    }
-  }
-  throw new TypeError(
-    `opencode-e2b option secrets["${host}"] must be a secret name, or { secret, header?, prefix? }`,
-  )
-}
-
-export function parseOptions(raw: Record<string, unknown> | undefined): Options {
-  const input = raw ?? {}
-  const template = input.template ?? DEFAULT_TEMPLATE
-  const idleMinutes = input.idleMinutes ?? 15
-  const git = input.git ?? "auto"
-  const domain = input.domain
-  if (domain !== undefined && (typeof domain !== "string" || domain === "")) {
-    throw new TypeError("opencode-e2b option domain must be an E2B domain, for example e2b-juliett.dev")
-  }
-  if (typeof template !== "string" || template === "") {
-    throw new TypeError("opencode-e2b option template must be a template name")
-  }
-  if (typeof idleMinutes !== "number" || idleMinutes <= 0) {
-    throw new TypeError("opencode-e2b option idleMinutes must be a positive number")
-  }
-  if (typeof git !== "boolean" && git !== "auto") {
-    throw new TypeError('opencode-e2b option git must be true, false or "auto"')
-  }
-  const network = input.network ?? {}
-  if (typeof network !== "object" || network === null || Array.isArray(network)) {
-    throw new TypeError("opencode-e2b option network must be { allowOut?, denyOut? }")
-  }
-  const { allowOut, denyOut } = network as Record<string, unknown>
-  const secretsInput = input.secrets ?? {}
-  if (typeof secretsInput !== "object" || secretsInput === null || Array.isArray(secretsInput)) {
-    throw new TypeError("opencode-e2b option secrets must map hosts to secret names")
-  }
-  const secrets: Record<string, SecretRule> = {}
-  for (const [host, value] of Object.entries(secretsInput)) {
-    secrets[host] = secretRule(host, value)
-  }
-  return {
-    domain,
-    template,
+const OptionsSchema = z
+  .object({
+    /** E2B region domain, for example e2b-juliett.dev for the EU. */
+    domain: name.optional(),
+    template: name.default("opencode"),
+    idleMinutes: z.number().positive().default(15),
+    /** Names of host environment variables to pass to commands. */
+    env: z.array(name).default([]),
+    /** Send .git to the sandbox: always, never, or "auto" (only when it is small enough). */
+    git: z.union([z.boolean(), z.literal("auto")]).default("auto"),
+    network: z.object({ allowOut: z.array(name).optional(), denyOut: z.array(name).optional() }).default({}),
+    /** Host -> how to inject a stored secret into requests to that host. */
+    secrets: z.record(z.string(), SecretRule).default({}),
+  })
+  .transform(({ idleMinutes, network, ...rest }) => ({
+    ...rest,
     idleMs: idleMinutes * 60_000,
-    env: stringList(input.env, "env") ?? [],
-    git,
-    allowOut: stringList(allowOut, "network.allowOut"),
-    denyOut: stringList(denyOut, "network.denyOut"),
-    secrets,
+    allowOut: network.allowOut,
+    denyOut: network.denyOut,
+  }))
+
+export type Options = z.output<typeof OptionsSchema>
+
+/** Read the plugin options from OpenCode's config. Fails with a message that names the bad option. */
+export function parseOptions(input: Plugin.Context["options"] | undefined): Options {
+  const result = OptionsSchema.safeParse(input ?? {})
+  if (!result.success) {
+    throw new TypeError(`opencode-e2b options: ${z.prettifyError(result.error)}`)
   }
+  return result.data
 }
 
 /** The sandbox network config, or undefined to leave E2B's default (all egress allowed). */

@@ -5,7 +5,7 @@
  */
 
 import net from "node:net"
-import { ENV, type PluginMessage, type ShimMessage, encode, onMessages } from "./protocol.js"
+import { ENV, PluginMessage, type ShimMessage, encode, onMessages } from "./protocol.js"
 
 const KILL_GRACE_MS = 5_000
 
@@ -34,18 +34,30 @@ const send = (message: ShimMessage) => {
 let finished = false
 send({ type: "run", command, cwd: process.cwd(), env })
 
-onMessages<PluginMessage>(conn, (message) => {
-  if (message.type === "out") {
-    process.stdout.write(Buffer.from(message.data, "base64"))
-  } else if (message.type === "exit") {
+onMessages(
+  conn,
+  PluginMessage,
+  (message) => {
+    if (message.type === "out") {
+      process.stdout.write(Buffer.from(message.data, "base64"))
+    } else if (message.type === "exit") {
+      finished = true
+      process.exitCode = message.code
+    } else {
+      finished = true
+      process.stdout.write(`${message.message}\n`)
+      process.exitCode = 1
+    }
+  },
+  (line) => {
     finished = true
-    process.exitCode = message.code
-  } else {
-    finished = true
-    process.stdout.write(`${message.message}\n`)
+    process.stdout.write(
+      `opencode-e2b: the plugin sent a message the shim cannot read: ${line.slice(0, 200)}\n`,
+    )
     process.exitCode = 1
-  }
-})
+    conn.end()
+  },
+)
 
 conn.on("close", () => {
   if (!finished) {

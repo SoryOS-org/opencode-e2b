@@ -10,7 +10,14 @@
  * project's sandbox, if any, is the starting point for new ones.
  */
 
-import { Sandbox, type SandboxMetrics, type SandboxNetworkOpts, SandboxNotFoundError } from "e2b"
+import {
+  NotFoundError,
+  Sandbox,
+  type SandboxMetrics,
+  type SandboxNetworkOpts,
+  SandboxNotFoundError,
+} from "e2b"
+import * as z from "zod"
 import type { Plugin } from "@opencode/plugin"
 import { init } from "../sync/remote.js"
 
@@ -27,16 +34,10 @@ export interface BoxOptions {
 
 type Storage = Plugin.Context["storage"]
 
-interface CachedBox {
-  sandboxId: string
-  template: string
-}
+const CachedBox = z.object({ sandboxId: z.string(), template: z.string() })
 
-interface SavedSnapshot {
-  snapshotId: string
-  template: string
-  at: string
-}
+const SavedSnapshot = z.object({ snapshotId: z.string(), template: z.string(), at: z.string() })
+export type SavedSnapshot = z.infer<typeof SavedSnapshot>
 
 export interface Box {
   /** The sandbox, created on first use. `onCreate` runs before a new sandbox starts. */
@@ -60,6 +61,11 @@ export function createBox(storage: Storage, root: string, key: string, opts: Box
   const snapshotKey = `snapshot:${region}:${key}`
   const api = { apiKey: opts.apiKey, domain: opts.domain }
   const metadata = { app: "opencode-e2b", project: key, template: opts.template }
+  /** A stored record, or undefined when it is missing or from an older plugin version. */
+  const read = async <T>(storageKey: string, schema: z.ZodType<T>) => {
+    const parsed = schema.safeParse(await storage.get(storageKey))
+    return parsed.success ? parsed.data : undefined
+  }
   let current: Sandbox | undefined
   let pending: Promise<Sandbox> | undefined
 
@@ -76,7 +82,7 @@ export function createBox(storage: Storage, root: string, key: string, opts: Box
   }
 
   async function find(): Promise<Sandbox | undefined> {
-    const cached = (await storage.get(cacheKey)) as CachedBox | undefined
+    const cached = await read(cacheKey, CachedBox)
     if (cached?.template === opts.template) {
       const sandbox = await connect(cached.sandboxId)
       if (sandbox) {
@@ -87,7 +93,8 @@ export function createBox(storage: Storage, root: string, key: string, opts: Box
       ...api,
       query: { metadata, state: ["running", "paused"] },
     }).nextItems()
-    // Oldest first, so two opencode processes that raced to create one converge on the same sandbox.
+    // Without a cached id, take the oldest: if two OpenCode processes raced to create
+    // a sandbox for the project, both then pick the same one.
     const oldest = listed.toSorted((a, b) => a.startedAt.getTime() - b.startedAt.getTime())[0]
     return oldest ? connect(oldest.sandboxId) : undefined
   }
@@ -101,13 +108,13 @@ export function createBox(storage: Storage, root: string, key: string, opts: Box
         lifecycle: { onTimeout: "pause", autoResume: true },
         network: opts.network,
       })
-    const saved = (await storage.get(snapshotKey)) as SavedSnapshot | undefined
+    const saved = await read(snapshotKey, SavedSnapshot)
     if (saved?.template === opts.template) {
       try {
         return await create(saved.snapshotId)
       } catch (err) {
         // A deleted snapshot falls back to the template. Anything else is a real error.
-        if (!(err instanceof SandboxNotFoundError) && !/not found/i.test(String(err))) {
+        if (!(err instanceof NotFoundError || err instanceof SandboxNotFoundError)) {
           throw err
         }
         await storage.remove(snapshotKey)
@@ -132,7 +139,9 @@ export function createBox(storage: Storage, root: string, key: string, opts: Box
     }
     // Idempotent, so a sandbox whose first setup failed is repaired here.
     await init(sandbox, root)
-    await storage.set(cacheKey, { sandboxId: sandbox.sandboxId, template: opts.template } satisfies CachedBox)
+    await storage.set(cacheKey, { sandboxId: sandbox.sandboxId, template: opts.template } satisfies z.infer<
+      typeof CachedBox
+    >)
     return sandbox
   }
 
@@ -149,9 +158,12 @@ export function createBox(storage: Storage, root: string, key: string, opts: Box
     },
     peek: () => current,
     keepAlive() {
-      current?.setTimeout(opts.idleMs).catch(() => {
-        // A sandbox that is gone is found or created again on the next command.
-        current = undefined
+      current?.setTimeout(opts.idleMs).catch((err) => {
+        // A sandbox that is gone is found or created again on the next command. Any
+        // other failure (a network blip) keeps it: the next heartbeat tries again.
+        if (err instanceof SandboxNotFoundError) {
+          current = undefined
+        }
       })
     },
     forget() {
@@ -172,22 +184,24 @@ export function createBox(storage: Storage, root: string, key: string, opts: Box
         template: opts.template,
         at: new Date().toISOString(),
       }
-      await storage.set(snapshotKey, saved as never)
+      await storage.set(snapshotKey, saved)
       return saved
     },
     async clearSnapshot() {
-      const saved = (await storage.get(snapshotKey)) as SavedSnapshot | undefined
+      const saved = await read(snapshotKey, SavedSnapshot)
       await storage.remove(snapshotKey)
       if (saved) {
-        await Sandbox.deleteSnapshot(saved.snapshotId, api).catch(() => false)
+        // deleteSnapshot resolves false when the snapshot is already gone. Other failures surface.
+        await Sandbox.deleteSnapshot(saved.snapshotId, api)
       }
       return saved !== undefined
     },
-    savedSnapshot: async () => (await storage.get(snapshotKey)) as SavedSnapshot | undefined,
+    savedSnapshot: () => read(snapshotKey, SavedSnapshot),
     async metrics() {
       if (!current) {
         return undefined
       }
+      // Status must still answer when E2B has no metrics for the sandbox yet.
       const all = await Sandbox.getMetrics(current.sandboxId, api).catch(() => [])
       return all.at(-1)
     },

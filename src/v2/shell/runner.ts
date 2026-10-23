@@ -6,7 +6,15 @@
 import { type Sandbox, SandboxNotFoundError } from "e2b"
 import type { Box } from "../sandbox/box.js"
 import type { RunRequest } from "./protocol.js"
-import { applySpool, boxState, parseReport, runCommand, syncWarnings } from "../sync/remote.js"
+import {
+  APPLY_FAILED_EXIT,
+  applySpool,
+  boxState,
+  parseReport,
+  syncFailure,
+  syncWarnings,
+} from "../sync/remote.js"
+import { runCommand } from "./sandbox-command.js"
 import { type Pulled, type State, pull, push } from "../sync/push-pull.js"
 
 export interface SyncInfo {
@@ -30,10 +38,16 @@ export interface Runner {
   syncSoon(): void
   lastSync(): SyncInfo | undefined
   lastError(): string | undefined
-  /** Why the project's .git was not sent, if it was not. */
-  gitSkipped(): string | undefined
+  gitHistory(): GitHistory
   close(): void
 }
+
+/** Whether the project's .git is in the sandbox, so git can read history there. */
+export type GitHistory =
+  | { state: "off" }
+  | { state: "pending" }
+  | { state: "sent" }
+  | { state: "skipped"; reason: string }
 
 const SYNC_SOON_MS = 150
 const LIST_LIMIT = 5
@@ -46,7 +60,7 @@ export function createRunner(root: string | undefined, box: Box, shipGit: boolea
   let state: { sandboxId: string; value: State } | undefined
   let last: SyncInfo | undefined
   let lastError: string | undefined
-  let gitSkipped: string | undefined
+  let gitHistory: GitHistory = shipGit === false ? { state: "off" } : { state: "pending" }
   let warming: Promise<void> | undefined
   let soon: ReturnType<typeof setTimeout> | undefined
 
@@ -64,7 +78,9 @@ export function createRunner(root: string | undefined, box: Box, shipGit: boolea
       const current = state?.sandboxId === sandbox.sandboxId ? state.value : await boxState(sandbox, project)
       const result = await push(sandbox, project, current, shipGit)
       state = { sandboxId: sandbox.sandboxId, value: result.state }
-      gitSkipped = result.gitSkipped ?? gitSkipped
+      if (shipGit !== false) {
+        gitHistory = result.gitSkipped ? { state: "skipped", reason: result.gitSkipped } : { state: "sent" }
+      }
       return result.sent
     })
 
@@ -110,9 +126,30 @@ export function createRunner(root: string | undefined, box: Box, shipGit: boolea
     }
     await warming?.catch(() => undefined)
     const { sandbox, sent } = await connectAndPrepare(root, output)
-    const { code, stderr } = await runCommand(sandbox, root, request, output.data, killed, box.keepAlive)
+    const { code, stderr } = await runCommand(
+      sandbox,
+      root,
+      request,
+      (data) => {
+        output.data(data)
+      },
+      killed,
+      () => {
+        box.keepAlive()
+      },
+    )
     for (const warning of syncWarnings(stderr)) {
       output.note(`sync warning: ${warning}`)
+    }
+    const failure = syncFailure(stderr)
+    if (failure) {
+      // The two sides may no longer agree. Forget the record, so the next command
+      // reads the sandbox's own state and sends the difference again.
+      state = undefined
+      if (code === APPLY_FAILED_EXIT) {
+        throw new Error(failure)
+      }
+      output.note(failure)
     }
     const pulled = await bringBack(sandbox, root, stderr)
     last = { at: new Date(), sent, pulled }
@@ -135,7 +172,8 @@ export function createRunner(root: string | undefined, box: Box, shipGit: boolea
   }
 
   const background = (task: () => Promise<void>) =>
-    task().catch((err: unknown) => {
+    task().catch((err) => {
+      state = undefined
       lastError = errorText(err)
     })
 
@@ -167,13 +205,15 @@ export function createRunner(root: string | undefined, box: Box, shipGit: boolea
     },
     lastSync: () => last,
     lastError: () => lastError,
-    gitSkipped: () => gitSkipped,
+    gitHistory: () => gitHistory,
     close() {
       clearTimeout(soon)
     },
   }
 }
 
+/** The message to show for a thrown value. Anything can be thrown, so this is where it is narrowed. */
+// oxlint-disable-next-line anti-slop/no-unknown-parameters -- SAFETY: catch boundary, every thrown value ends here
 export function errorText(err: unknown): string {
   return `opencode-e2b: ${err instanceof Error ? err.message : String(err)}`
 }

@@ -6,6 +6,7 @@
  */
 
 import type net from "node:net"
+import * as z from "zod"
 
 /** Environment variables the shell hook sets for the shim. */
 export const ENV = {
@@ -16,28 +17,43 @@ export const ENV = {
   forward: "OPENCODE_E2B_ENV",
 } as const
 
-export interface RunRequest {
-  type: "run"
-  command: string
-  cwd: string
-  env: Record<string, string>
-}
+const RunRequestSchema = z.object({
+  type: z.literal("run"),
+  command: z.string(),
+  cwd: z.string(),
+  env: z.record(z.string(), z.string()),
+})
 
-export type ShimMessage = RunRequest | { type: "kill" }
+/** Messages from the shim to the plugin. */
+export const ShimMessage = z.discriminatedUnion("type", [
+  RunRequestSchema,
+  z.object({ type: z.literal("kill") }),
+])
 
-export type PluginMessage =
-  | { type: "out"; data: string }
-  | { type: "exit"; code: number }
-  | { type: "error"; message: string }
+/** Messages from the plugin to the shim. */
+export const PluginMessage = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("out"), data: z.string() }),
+  z.object({ type: z.literal("exit"), code: z.number() }),
+  z.object({ type: z.literal("error"), message: z.string() }),
+])
+
+export type RunRequest = z.infer<typeof RunRequestSchema>
+export type ShimMessage = z.infer<typeof ShimMessage>
+export type PluginMessage = z.infer<typeof PluginMessage>
 
 export function encode(message: ShimMessage | PluginMessage): string {
   return `${JSON.stringify(message)}\n`
 }
 
-/** Calls `onMessage` for every complete line that arrives on `socket`. */
-export function onMessages<T extends ShimMessage | PluginMessage>(
+/**
+ * Calls `onMessage` for every complete line that arrives on `socket`, decoded with
+ * `schema`. A line that is not a valid message goes to `onInvalid`.
+ */
+export function onMessages<Message>(
   socket: net.Socket,
-  onMessage: (message: T) => void,
+  schema: z.ZodType<Message>,
+  onMessage: (message: Message) => void,
+  onInvalid: (line: string) => void,
 ): void {
   let buffered = ""
   socket.on("data", (chunk) => {
@@ -47,7 +63,20 @@ export function onMessages<T extends ShimMessage | PluginMessage>(
       const line = buffered.slice(0, newline)
       buffered = buffered.slice(newline + 1)
       newline = buffered.indexOf("\n")
-      onMessage(JSON.parse(line) as T)
+      const decoded = decode(schema, line)
+      if (decoded.success) {
+        onMessage(decoded.data)
+      } else {
+        onInvalid(line)
+      }
     }
   })
+}
+
+function decode<Message>(schema: z.ZodType<Message>, line: string) {
+  try {
+    return schema.safeParse(JSON.parse(line))
+  } catch {
+    return { success: false as const }
+  }
 }

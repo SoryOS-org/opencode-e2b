@@ -3,19 +3,16 @@
  * downloads of what a command changed, and copies of sandbox-only files.
  */
 
-import { createReadStream } from "node:fs"
+import { openAsBlob } from "node:fs"
 import { randomUUID } from "node:crypto"
 import { mkdir, rename, rm, stat } from "node:fs/promises"
 import path from "node:path"
-import { Readable } from "node:stream"
 import type { Sandbox } from "e2b"
 import { run } from "./files.js"
 import { quote, sh } from "./remote.js"
 
 const CHUNK_BYTES = 32 * 1024 * 1024
 const DIRECT_BYTES = 8 * 1024 * 1024
-/** E2B's upload endpoint resets the connection (ENHANCE_YOUR_CALM) when uploads overlap, so one at a time. */
-const UPLOAD_PARALLEL = 1
 /** Large first uploads can take minutes; a dead connection still fails the request. */
 const UPLOAD_TIMEOUT_MS = 30 * 60_000
 
@@ -34,68 +31,57 @@ export async function upload(
   bookkeeping: { path: string; data: string }[],
 ): Promise<void> {
   const sized = await Promise.all(
-    paths.map(async (p) => ({ p, size: (await stat(path.join(root, p)).catch(() => undefined))?.size ?? 0 })),
+    paths.map(async (p) => ({ path: p, size: (await stat(path.join(root, p))).size })),
   )
-  const direct = sized.filter((f) => f.size >= DIRECT_BYTES)
-  const chunks: string[][] = []
-  let chunk: string[] = []
-  let bytes = 0
-  for (const { p, size } of sized) {
-    if (size >= DIRECT_BYTES) {
-      continue
-    }
-    if (chunk.length > 0 && bytes + size > CHUNK_BYTES) {
-      chunks.push(chunk)
-      chunk = []
-      bytes = 0
-    }
-    chunk.push(p)
-    bytes += size
-  }
-  if (chunk.length > 0) {
-    chunks.push(chunk)
-  }
+  const direct = sized.filter((file) => file.size >= DIRECT_BYTES)
+  const chunks = chunk(sized.filter((file) => file.size < DIRECT_BYTES))
+  const timeout = { requestTimeoutMs: UPLOAD_TIMEOUT_MS }
 
   // The common case, a few edited files: one tarball and the bookkeeping in a single request.
+  // Order matters: the wrapper applies an entry only once its .paths file exists.
   if (direct.length === 0 && chunks.length <= 1) {
-    const writes: { path: string; data: ArrayBuffer | string }[] = []
-    if (chunks[0]) {
-      const tarball = await run("tar", ["-czf", "-", "--null", "-T", "-"], {
-        cwd: root,
-        input: chunks[0].join("\0"),
-      })
-      writes.push({ path: `${id}-0.tgz`, data: new Uint8Array(tarball).buffer })
-    }
-    // Order matters: the wrapper applies an entry only once its .paths file exists.
-    await sandbox.files.write([...writes, ...bookkeeping], { requestTimeoutMs: UPLOAD_TIMEOUT_MS })
+    const tarballs = chunks[0] ? [{ path: `${id}-0.tgz`, data: await tarballOf(root, chunks[0]) }] : []
+    await sandbox.files.write([...tarballs, ...bookkeeping], timeout)
     return
   }
 
-  const tasks = [
-    ...chunks.map((files, n) => async () => {
-      const tarball = await run("tar", ["-czf", "-", "--null", "-T", "-"], {
-        cwd: root,
-        input: files.join("\0"),
-      })
-      await sandbox.files.write(`${id}-${n}.tgz`, new Uint8Array(tarball).buffer, {
-        requestTimeoutMs: UPLOAD_TIMEOUT_MS,
-      })
-    }),
-    ...direct.map(({ p }) => async () => {
-      const stream = Readable.toWeb(createReadStream(path.join(root, p))) as unknown as ReadableStream
-      await sandbox.files.write(path.posix.join(root, p), stream, { requestTimeoutMs: UPLOAD_TIMEOUT_MS })
-    }),
-  ]
-  let next = 0
-  const worker = async () => {
-    while (next < tasks.length) {
-      const task = tasks[next++]!
-      await task()
-    }
+  // One request at a time: E2B's upload endpoint resets the connection when uploads overlap.
+  for (const [n, files] of chunks.entries()) {
+    await sandbox.files.write(`${id}-${n}.tgz`, await tarballOf(root, files), timeout)
   }
-  await Promise.all(Array.from({ length: Math.min(UPLOAD_PARALLEL, tasks.length) }, worker))
-  // Last: the wrapper applies an entry only once its .paths file exists.
-  await sandbox.files.write(bookkeeping, { requestTimeoutMs: UPLOAD_TIMEOUT_MS })
+  for (const file of direct) {
+    await sandbox.files.write(
+      path.posix.join(root, file.path),
+      await openAsBlob(path.join(root, file.path)),
+      timeout,
+    )
+  }
+  await sandbox.files.write(bookkeeping, timeout)
+}
+
+/** Group files into lists of about CHUNK_BYTES each, keeping their order. */
+function chunk(files: { path: string; size: number }[]): string[][] {
+  const chunks: string[][] = []
+  let current: string[] = []
+  let bytes = 0
+  for (const file of files) {
+    if (current.length > 0 && bytes + file.size > CHUNK_BYTES) {
+      chunks.push(current)
+      current = []
+      bytes = 0
+    }
+    current.push(file.path)
+    bytes += file.size
+  }
+  if (current.length > 0) {
+    chunks.push(current)
+  }
+  return chunks
+}
+
+async function tarballOf(root: string, paths: string[]): Promise<ArrayBuffer> {
+  const tarball = await run("tar", ["-czf", "-", "--null", "-T", "-"], { cwd: root, input: paths.join("\0") })
+  return new Uint8Array(tarball).buffer
 }
 
 /** The tarball a command's changes came in: inline in the report, or a file in the sandbox. */

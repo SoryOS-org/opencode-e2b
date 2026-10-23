@@ -26,7 +26,8 @@
   },
   "dependencies": {
     "@opencode-ai/plugin": "1.18.23",
-    "e2b": "^2.56.0"
+    "e2b": "2.56.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@opencode/plugin": "2.1.0",

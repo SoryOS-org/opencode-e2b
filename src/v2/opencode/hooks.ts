@@ -21,12 +21,12 @@ const SANDBOX_NOTE = [
 ].join(" ")
 
 export async function registerHooks(plugin: PluginContext, socket: string): Promise<void> {
-  const { opencode, opts, runner, mode } = plugin
+  const { opencode, opts, runner, sandboxSwitch } = plugin
 
   // The hook only sets env and the shell: it also runs for commands that the
   // permission check then denies, so the sandbox starts when the shim connects.
   await opencode.shell.hook("create.before", (invocation) => {
-    if (mode.off) {
+    if (!sandboxSwitch.enabled) {
       return
     }
     if (isLocalGit(invocation.command)) {
@@ -44,19 +44,19 @@ export async function registerHooks(plugin: PluginContext, socket: string): Prom
 
   // Start the sandbox while the model thinks, so the first command does not wait for it.
   await opencode.session.hook("prompt", () => {
-    if (!mode.off) {
+    if (sandboxSwitch.enabled) {
       runner.warm()
     }
   })
 
   await opencode.tool.hook("execute.after", (input) => {
-    if (!mode.off && input.status === "completed" && EDIT_TOOLS.has(input.tool)) {
+    if (sandboxSwitch.enabled && input.status === "completed" && EDIT_TOOLS.has(input.tool)) {
       runner.syncSoon()
     }
   })
 
   await opencode.permission.hook("evaluate", (input) => {
-    if (mode.off || input.action !== "shell" || input.effect === "deny") {
+    if (!sandboxSwitch.enabled || input.action !== "shell" || input.effect === "deny") {
       return
     }
     // A plain git command runs on the user's machine (see the shell hook). Combined
@@ -71,7 +71,7 @@ export async function registerHooks(plugin: PluginContext, socket: string): Prom
 
   const describe = (input: { tools: Record<string, { description: string }> }) => {
     const shell = input.tools.shell
-    if (!mode.off && shell && !shell.description.includes(SANDBOX_NOTE)) {
+    if (sandboxSwitch.enabled && shell && !shell.description.includes(SANDBOX_NOTE)) {
       shell.description = `${shell.description}\n\n${SANDBOX_NOTE}`
     }
   }

@@ -1,0 +1,58 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": ["dist/**", "node_modules/**", "tools/oxlint/anti-slop/**"],
+  "jsPlugins": [
+    // anti-slop, vendored from github.com/dmmulroy/anti-slop (see tools/oxlint/anti-slop/VENDOR.md).
+    // `@oxlint/plugins` in package.json must stay pinned to the exact same version as `oxlint`.
+    { "name": "anti-slop", "specifier": "./tools/oxlint/anti-slop/index.ts" }
+  ],
+  // Existing code (core, v1, tests) starts with warnings; promote rules to errors one PR at a time.
+  "rules": {
+    "curly": ["warn", "all"],
+    "typescript/no-confusing-void-expression": "warn",
+    "anti-slop/no-array-filter-map": "warn",
+    "anti-slop/no-chained-type-assertions": "warn",
+    "anti-slop/no-conditional-empty-object-spread": "off",
+    "anti-slop/no-known-value-widening": "warn",
+    "anti-slop/no-module-mocking": "warn",
+    "anti-slop/no-object-parameters": "warn",
+    "anti-slop/no-reduce-accumulator-copy": "warn",
+    "anti-slop/no-reflect-apply": "warn",
+    "anti-slop/no-reflect-get": "warn",
+    "anti-slop/no-runtime-typeof": "warn",
+    "anti-slop/no-shape-in-symbol-names": "warn",
+    "anti-slop/no-unknown-parameters": "warn",
+    "anti-slop/no-unknown-returns": "warn",
+    "anti-slop/no-unknown-type-aliases": "warn",
+    "anti-slop/no-unsafe-dictionary-type": "warn",
+    "anti-slop/no-widen-then-assert": "warn",
+    "anti-slop/require-safety-comment-for-type-assertion": "warn"
+  },
+  "overrides": [
+    {
+      // Code written with these rules: every finding is an error.
+      "files": ["src/v2/**", "src/index.ts"],
+      "rules": {
+        "curly": ["error", "all"],
+        "typescript/no-confusing-void-expression": "error",
+        "anti-slop/no-array-filter-map": "error",
+        "anti-slop/no-chained-type-assertions": "error",
+        "anti-slop/no-conditional-empty-object-spread": "off",
+        "anti-slop/no-known-value-widening": "error",
+        "anti-slop/no-module-mocking": "error",
+        "anti-slop/no-object-parameters": "error",
+        "anti-slop/no-reduce-accumulator-copy": "error",
+        "anti-slop/no-reflect-apply": "error",
+        "anti-slop/no-reflect-get": "error",
+        "anti-slop/no-runtime-typeof": "error",
+        "anti-slop/no-shape-in-symbol-names": "error",
+        "anti-slop/no-unknown-parameters": "error",
+        "anti-slop/no-unknown-returns": "error",
+        "anti-slop/no-unknown-type-aliases": "error",
+        "anti-slop/no-unsafe-dictionary-type": "error",
+        "anti-slop/no-widen-then-assert": "error",
+        "anti-slop/require-safety-comment-for-type-assertion": "error"
+      }
+    }
+  ]
+}

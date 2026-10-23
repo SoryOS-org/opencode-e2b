@@ -1,0 +1,6 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 110,
+  "semi": false,
+  "ignorePatterns": ["dist/**", "tools/oxlint/anti-slop/**", "**/*.md"]
+}

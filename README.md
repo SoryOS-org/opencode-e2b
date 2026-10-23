@@ -80,10 +80,13 @@ Limits: the project must be a git repository; submodule contents and a linked wo
 ## Development
 
 ```bash
-bun run format:check
 bun run typecheck
+bun run lint          # oxlint with the anti-slop rules
+bun run format:check  # oxfmt
 bun run test
 ```
+
+`bun run check` runs all four. Lint rules are errors in `src/v2` and `src/index.ts`, and warnings in older code until each rule is cleaned up there. The anti-slop rules are vendored in `tools/oxlint/anti-slop` (see its `VENDOR.md`).
 
 The plugin is loaded by OpenCode's Bun runtime and uses Bun as its development runtime. `bun run test` builds `dist/` first, then runs the Bun test runner against `test/*.test.ts`.
 

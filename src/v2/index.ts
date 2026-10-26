@@ -10,6 +10,8 @@
  *   shell/     the shell redirect: shim, the socket it talks to, the runner, git routing
  *   sync/      keeping the sandbox copy equal to the host copy around each command
  *   sandbox/   one E2B sandbox per project
+ *   box/       boxes: OpenCode itself running in a sandbox, for long tasks
+ *   cli/       the opencode-e2b command for boxes and their model keys
  */
 
 import { createHash } from "node:crypto"
@@ -17,7 +19,8 @@ import os from "node:os"
 import path from "node:path"
 import type { Plugin } from "@opencode/plugin"
 import "../core/e2b-sdk.js"
-import { createBox } from "./sandbox/box.js"
+import { createProjectSandbox } from "./sandbox/project-sandbox.js"
+import { registerBoxCommands } from "./opencode/box-commands.js"
 import { registerCommands } from "./opencode/commands.js"
 import { createSandboxSwitch } from "./opencode/context.js"
 import { gitRoot } from "./sync/files.js"
@@ -35,24 +38,25 @@ const plugin: Plugin.Plugin = {
     const project = root ?? opencode.location.directory
     const key = createHash("sha256").update(project).digest("hex").slice(0, 16)
 
-    const box = createBox(opencode.storage, project, key, {
+    const projectSandbox = createProjectSandbox(opencode.storage, project, key, {
       apiKey: process.env.E2B_API_KEY,
       domain: opts.domain,
       template: opts.template,
       idleMs: opts.idleMs,
       network: networkFor(opts),
     })
-    const runner = createRunner(root, box, opts.git)
+    const runner = createRunner(root, projectSandbox, opts.git)
     const server = await startServer(
       path.join(os.tmpdir(), `opencode-e2b-${process.pid}-${key}.sock`),
       runner,
     )
     const sandboxSwitch = await createSandboxSwitch(opencode.storage, `off:${key}`)
 
-    const context = { opencode, opts, root, project, box, runner, sandboxSwitch }
+    const context = { opencode, opts, root, project, projectSandbox, runner, sandboxSwitch }
     await registerHooks(context, server.socket)
     await registerTools(context)
     await registerCommands(context)
+    await registerBoxCommands(context)
 
     return () => {
       runner.close()

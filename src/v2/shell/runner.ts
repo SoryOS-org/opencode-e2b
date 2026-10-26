@@ -4,7 +4,7 @@
  */
 
 import { type Sandbox, SandboxNotFoundError } from "e2b"
-import type { Box } from "../sandbox/box.js"
+import type { ProjectSandbox } from "../sandbox/project-sandbox.js"
 import type { RunRequest } from "./protocol.js"
 import {
   APPLY_FAILED_EXIT,
@@ -55,7 +55,11 @@ const NOTHING_PULLED: Pulled = { written: [], removed: [], conflicts: [] }
 const NOT_A_REPO =
   "opencode-e2b runs commands in a sandbox copy of your git repository, and this folder is not in one. Run `git init`, or turn the sandbox off with /e2b-off."
 
-export function createRunner(root: string | undefined, box: Box, shipGit: boolean | "auto"): Runner {
+export function createRunner(
+  root: string | undefined,
+  projectSandbox: ProjectSandbox,
+  shipGit: boolean | "auto",
+): Runner {
   /** The agreed file state, valid for the sandbox with this id. */
   let state: { sandboxId: string; value: State } | undefined
   let last: SyncInfo | undefined
@@ -87,7 +91,7 @@ export function createRunner(root: string | undefined, box: Box, shipGit: boolea
   /** Connect (or create) the sandbox and send what changed. A sandbox that is gone is replaced once. */
   async function connectAndPrepare(project: string, output: Output) {
     const attempt = async () => {
-      const sandbox = await box.get(() => {
+      const sandbox = await projectSandbox.get(() => {
         output.note("starting a sandbox for this project and uploading it (first command only)")
       })
       return { sandbox, sent: await prepare(sandbox, project) }
@@ -98,7 +102,7 @@ export function createRunner(root: string | undefined, box: Box, shipGit: boolea
       if (!(err instanceof SandboxNotFoundError)) {
         throw err
       }
-      box.forget()
+      projectSandbox.forget()
       return attempt()
     }
   }
@@ -135,7 +139,7 @@ export function createRunner(root: string | undefined, box: Box, shipGit: boolea
       },
       killed,
       () => {
-        box.keepAlive()
+        projectSandbox.keepAlive()
       },
     )
     for (const warning of syncWarnings(stderr)) {
@@ -187,17 +191,17 @@ export function createRunner(root: string | undefined, box: Box, shipGit: boolea
       }
     },
     warm() {
-      if (!root || box.peek() || warming) {
+      if (!root || projectSandbox.peek() || warming) {
         return
       }
-      warming = background(async () => syncNow(await box.get(), root)).finally(() => {
+      warming = background(async () => syncNow(await projectSandbox.get(), root)).finally(() => {
         warming = undefined
       })
     },
     syncSoon() {
       clearTimeout(soon)
       soon = setTimeout(() => {
-        const sandbox = box.peek()
+        const sandbox = projectSandbox.peek()
         if (root && sandbox) {
           void background(() => syncNow(sandbox, root))
         }

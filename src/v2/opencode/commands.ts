@@ -8,7 +8,7 @@ import { fetchPaths } from "../sync/transfer.js"
 type SessionID = Parameters<Plugin.Context["session"]["synthetic"]>[0]["sessionID"]
 
 export async function registerCommands(plugin: PluginContext): Promise<void> {
-  const { opencode, opts, root, box, sandboxSwitch } = plugin
+  const { opencode, opts, root, projectSandbox, sandboxSwitch } = plugin
 
   // A command's result goes to the session as a synthetic message. The TUI shows only
   // its description, so that carries the answer; the text is the full version for the model.
@@ -45,7 +45,7 @@ export async function registerCommands(plugin: PluginContext): Promise<void> {
           await reply(sessionID, "Usage: /e2b-pull <path> [more paths]")
           return
         }
-        await fetchPaths(await box.get(), root, paths)
+        await fetchPaths(await projectSandbox.get(), root, paths)
         await reply(sessionID, `Copied from the sandbox: ${paths.join(", ")}`)
       },
     })
@@ -54,7 +54,7 @@ export async function registerCommands(plugin: PluginContext): Promise<void> {
       name: "e2b-reset",
       description: "Delete the sandbox. The next command starts a fresh one.",
       execute: async ({ sessionID }) => {
-        const killed = await box.kill()
+        const killed = await projectSandbox.kill()
         await reply(
           sessionID,
           killed
@@ -70,7 +70,7 @@ export async function registerCommands(plugin: PluginContext): Promise<void> {
         "Save the sandbox (installed dependencies, tools) as the start for new ones. /e2b-snapshot clear stops that.",
       execute: async ({ sessionID, prompt }) => {
         if ((prompt.text ?? "").trim() === "clear") {
-          const cleared = await box.clearSnapshot()
+          const cleared = await projectSandbox.clearSnapshot()
           await reply(
             sessionID,
             cleared
@@ -79,7 +79,7 @@ export async function registerCommands(plugin: PluginContext): Promise<void> {
           )
           return
         }
-        const saved = await box.snapshot()
+        const saved = await projectSandbox.snapshot()
         await reply(
           sessionID,
           `Saved snapshot ${saved.snapshotId}. New sandboxes for this project start from it, with what is installed now. Your files still sync from your machine.`,

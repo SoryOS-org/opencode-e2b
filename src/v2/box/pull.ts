@@ -49,6 +49,15 @@ export interface Pulled {
   log: string
 }
 
+/** What a pull brought home, for the CLI and the slash command. */
+export function pullSummary(name: string, pulled: Pulled): string {
+  if (!pulled.branch) {
+    return `Box "${name}" has no new work.`
+  }
+  const count = pulled.log.split("\n").length
+  return `Branch ${pulled.branch} has the box's work (${count} ${count === 1 ? "commit" : "commits"}):\n${pulled.log}`
+}
+
 export async function pullBox(record: BoxRecord, access: E2BAccess): Promise<Pulled> {
   const sandbox = await Sandbox.connect(record.sandboxId, access)
   const remoteBundle = `/tmp/opencode-e2b-pull-${randomUUID()}.bundle`

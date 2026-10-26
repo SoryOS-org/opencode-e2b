@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterAll, test } from "bun:test"
-import { PULL_REF, bundleScript } from "../dist/v2/box/pull.js"
+import { PULL_REF, bundleScript, pullSummary } from "../dist/v2/box/pull.js"
 import { boxName, listBoxes, readBox, removeBox, saveBox } from "../dist/v2/box/registry.js"
 
 const temp = mkdtempSync(path.join(os.tmpdir(), "opencode-e2b-box-"))
@@ -64,6 +64,15 @@ test("pull reports nothing new when the box has no work", () => {
   const box = repo("idle")
   const base = git(box, "rev-parse", "HEAD")
   assert.equal(runScript(box, base, path.join(temp, "idle.bundle")), "OPENCODE_E2B_NOTHING_NEW")
+})
+
+test("the pull summary counts commits", () => {
+  assert.equal(pullSummary("b", { log: "" }), 'Box "b" has no new work.')
+  assert.equal(
+    pullSummary("b", { branch: "e2b/b", log: "abc one" }),
+    "Branch e2b/b has the box's work (1 commit):\nabc one",
+  )
+  assert.match(pullSummary("b", { branch: "e2b/b", log: "abc one\ndef two" }), /\(2 commits\)/)
 })
 
 test("records are private to the user and round-trip", async () => {

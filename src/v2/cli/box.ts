@@ -3,7 +3,7 @@
 import { parseArgs } from "node:util"
 import { attachBox } from "../box/attach.js"
 import { defaultBoxName, describeBoxes, findBox, killBox, listWithState, stopBox } from "../box/manage.js"
-import { pullBox } from "../box/pull.js"
+import { pullBox, pullSummary } from "../box/pull.js"
 import { upBox } from "../box/up.js"
 import type { E2BAccess } from "../sandbox/create.js"
 import { gitRoot } from "../sync/files.js"
@@ -72,14 +72,7 @@ export async function boxCommand(args: string[]): Promise<number> {
     return attachBox(record, boxAccess)
   }
   if (action === "pull") {
-    const pulled = await pullBox(record, boxAccess)
-    if (!pulled.branch) {
-      console.log(`Box "${record.name}" has no new work.`)
-      return 0
-    }
-    console.log(
-      `Branch ${pulled.branch} has the box's work (${pulled.log.split("\n").length} commits):\n${pulled.log}`,
-    )
+    console.log(pullSummary(record.name, await pullBox(record, boxAccess)))
     return 0
   }
   if (action === "stop") {

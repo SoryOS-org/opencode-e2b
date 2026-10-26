@@ -5,7 +5,7 @@
 
 import type { Plugin } from "@opencode/plugin"
 import { defaultBoxName, describeBoxes, findBox, killBox, listWithState, stopBox } from "../box/manage.js"
-import { pullBox } from "../box/pull.js"
+import { pullBox, pullSummary } from "../box/pull.js"
 import { upBox } from "../box/up.js"
 import { networkFor } from "../options.js"
 import {
@@ -66,10 +66,7 @@ export async function registerBoxCommands(plugin: PluginContext): Promise<void> 
     const record = await findBox(root, given)
     const boxAccess = { ...access, domain: record.domain ?? access.domain }
     if (action === "pull") {
-      const pulled = await pullBox(record, boxAccess)
-      return pulled.branch
-        ? `Branch ${pulled.branch} has the box's work (${pulled.log.split("\n").length} commits):\n${pulled.log}`
-        : `Box "${record.name}" has no new work.`
+      return pullSummary(record.name, await pullBox(record, boxAccess))
     }
     if (action === "stop") {
       await stopBox(record, boxAccess)

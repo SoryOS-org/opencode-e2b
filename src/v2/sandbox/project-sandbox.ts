@@ -10,18 +10,13 @@
  * project's sandbox, if any, is the starting point for new ones.
  */
 
-import {
-  NotFoundError,
-  Sandbox,
-  type SandboxMetrics,
-  type SandboxNetworkOpts,
-  SandboxNotFoundError,
-} from "e2b"
+import { NotFoundError, Sandbox, type SandboxMetrics, SandboxNotFoundError } from "e2b"
 import * as z from "zod"
 import type { Plugin } from "@opencode/plugin"
 import { init } from "../sync/remote.js"
+import { type Network, createSandbox } from "./create.js"
 
-export interface BoxOptions {
+export interface ProjectSandboxOptions {
   apiKey?: string
   /** E2B region domain, for example e2b-juliett.dev for the EU. Defaults to E2B_DOMAIN or e2b.app. */
   domain?: string
@@ -29,7 +24,7 @@ export interface BoxOptions {
   /** Idle time before E2B pauses the sandbox. Every command restarts it. */
   idleMs: number
   /** Egress rules: allow and deny lists, and per-host request transforms that inject stored secrets. */
-  network?: SandboxNetworkOpts
+  network?: Network
 }
 
 type Storage = Plugin.Context["storage"]
@@ -39,7 +34,7 @@ const CachedBox = z.object({ sandboxId: z.string(), template: z.string() })
 const SavedSnapshot = z.object({ snapshotId: z.string(), template: z.string(), at: z.string() })
 export type SavedSnapshot = z.infer<typeof SavedSnapshot>
 
-export interface Box {
+export interface ProjectSandbox {
   /** The sandbox, created on first use. `onCreate` runs before a new sandbox starts. */
   get(onCreate?: () => void): Promise<Sandbox>
   /** The sandbox if one is connected now. Never creates one. */
@@ -55,9 +50,14 @@ export interface Box {
   metrics(): Promise<SandboxMetrics | undefined>
 }
 
-export function createBox(storage: Storage, root: string, key: string, opts: BoxOptions): Box {
+export function createProjectSandbox(
+  storage: Storage,
+  root: string,
+  key: string,
+  opts: ProjectSandboxOptions,
+): ProjectSandbox {
   const region = opts.domain ?? process.env.E2B_DOMAIN ?? "e2b.app"
-  const cacheKey = `box:${region}:${key}`
+  const cacheKey = `projectSandbox:${region}:${key}`
   const snapshotKey = `snapshot:${region}:${key}`
   const api = { apiKey: opts.apiKey, domain: opts.domain }
   const metadata = { app: "opencode-e2b", project: key, template: opts.template }
@@ -101,13 +101,7 @@ export function createBox(storage: Storage, root: string, key: string, opts: Box
 
   async function create(): Promise<Sandbox> {
     const create = (from: string) =>
-      Sandbox.create(from, {
-        ...api,
-        metadata,
-        timeoutMs: opts.idleMs,
-        lifecycle: { onTimeout: "pause", autoResume: true },
-        network: opts.network,
-      })
+      createSandbox(from, api, { metadata, idleMs: opts.idleMs, network: opts.network })
     const saved = await read(snapshotKey, SavedSnapshot)
     if (saved?.template === opts.template) {
       try {

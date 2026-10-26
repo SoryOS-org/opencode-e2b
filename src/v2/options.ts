@@ -7,8 +7,9 @@
  */
 
 import type { Plugin } from "@opencode/plugin"
-import { Secret, type SandboxNetworkOpts } from "e2b"
+import { Secret } from "e2b"
 import * as z from "zod"
+import type { Network } from "./sandbox/create.js"
 
 const name = z.string().min(1)
 
@@ -31,6 +32,8 @@ const OptionsSchema = z
     domain: name.optional(),
     template: name.default("opencode"),
     idleMinutes: z.number().positive().default(15),
+    /** How long a box runs before E2B pauses it. E2B plans cap this (1 hour on the lower plans). */
+    boxHours: z.number().positive().default(1),
     /** Names of host environment variables to pass to commands. */
     env: z.array(name).default([]),
     /** Send .git to the sandbox: always, never, or "auto" (only when it is small enough). */
@@ -39,9 +42,10 @@ const OptionsSchema = z
     /** Host -> how to inject a stored secret into requests to that host. */
     secrets: z.record(z.string(), SecretRule).default({}),
   })
-  .transform(({ idleMinutes, network, ...rest }) => ({
+  .transform(({ idleMinutes, boxHours, network, ...rest }) => ({
     ...rest,
     idleMs: idleMinutes * 60_000,
+    boxLifetimeMs: boxHours * 3_600_000,
     allowOut: network.allowOut,
     denyOut: network.denyOut,
   }))
@@ -58,7 +62,7 @@ export function parseOptions(input: Plugin.Context["options"] | undefined): Opti
 }
 
 /** The sandbox network config, or undefined to leave E2B's default (all egress allowed). */
-export function networkFor(opts: Options): SandboxNetworkOpts | undefined {
+export function networkFor(opts: Options): Network | undefined {
   const hosts = Object.keys(opts.secrets)
   if (hosts.length === 0 && !opts.allowOut && !opts.denyOut) {
     return undefined

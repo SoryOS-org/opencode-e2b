@@ -8,7 +8,7 @@ import { readStatus } from "./status.js"
 const READ_LIMIT = 50_000
 
 export async function registerTools(plugin: PluginContext): Promise<void> {
-  const { opencode, project, box } = plugin
+  const { opencode, project, projectSandbox } = plugin
   await opencode.tool.transform((tools) => {
     tools.add({
       name: "e2b_preview_url",
@@ -17,7 +17,7 @@ export async function registerTools(plugin: PluginContext): Promise<void> {
       options: { codemode: false },
       input: z.object({ port: z.int().min(1).max(65535) }),
       async execute({ port }) {
-        const sandbox = await box.get()
+        const sandbox = await projectSandbox.get()
         return { content: `https://${sandbox.getHost(port)}` }
       },
     })
@@ -28,7 +28,7 @@ export async function registerTools(plugin: PluginContext): Promise<void> {
       options: { codemode: false },
       input: z.object({ path: z.string().min(1), offset: z.int().min(0).default(0) }),
       async execute({ path: file, offset }) {
-        const sandbox = await box.get()
+        const sandbox = await projectSandbox.get()
         const bytes = await sandbox.files.read(path.resolve(project, file), { format: "bytes" })
         const slice = Buffer.from(bytes).subarray(offset, offset + READ_LIMIT)
         const rest = bytes.length - offset - slice.length

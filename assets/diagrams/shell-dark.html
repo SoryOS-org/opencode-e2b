@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Shell mode</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background: #0c1117;
+      }
+      svg {
+        display: block;
+        width: 1000px;
+        height: 296px;
+      }
+    </style>
+  </head>
+  <body>
+    <svg
+      viewBox="0 72 1000 296"
+      xmlns="http://www.w3.org/2000/svg"
+      role="img"
+      aria-labelledby="shell-dark-title shell-dark-desc"
+    >
+      <title id="shell-dark-title">Shell mode</title>
+      <desc id="shell-dark-desc">
+        OpenCode runs on your machine and edits your files there. Each shell command runs in one E2B sandbox
+        per project: changed files are sent before the command, and files the command changed come back after
+        it.
+      </desc>
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#bfc0c0" />
+        </marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#f08a59" />
+        </marker>
+      </defs>
+
+      <rect x="0" y="0" width="1000" height="500" fill="#0c1117" />
+
+      <rect
+        x="456"
+        y="104"
+        width="488"
+        height="208"
+        rx="8"
+        fill="rgba(245,245,245,0.03)"
+        stroke="rgba(245,245,245,0.10)"
+        stroke-width="0.8"
+      />
+      <rect x="472" y="108" width="80" height="12" rx="2" fill="#0c1117" />
+      <text
+        x="512.0"
+        y="117"
+        fill="rgba(245,245,245,0.40)"
+        font-size="7"
+        font-family="'Geist Mono', monospace"
+        text-anchor="middle"
+        letter-spacing="0.14em"
+      >
+        E2B CLOUD
+      </text>
+
+      <line
+        x1="272"
+        y1="208"
+        x2="490"
+        y2="208"
+        stroke="#f08a59"
+        stroke-width="1.2"
+        marker-end="url(#arrow-accent)"
+      />
+      <line
+        x1="696"
+        y1="208"
+        x2="738"
+        y2="208"
+        stroke="#bfc0c0"
+        stroke-width="1.2"
+        marker-end="url(#arrow)"
+      />
+      <path
+        d="M 596,264 V 328 Q 596,336 588,336 H 176 Q 168,336 168,328 V 270"
+        fill="none"
+        stroke="#bfc0c0"
+        stroke-width="1"
+        stroke-dasharray="4,3"
+        marker-end="url(#arrow)"
+      />
+      <rect x="322.8" y="186" width="118.39999999999999" height="14" rx="2" fill="#0c1117" />
+      <text
+        x="382"
+        y="196"
+        fill="#bfc0c0"
+        font-size="9"
+        font-family="'Geist Mono', monospace"
+        text-anchor="middle"
+        letter-spacing="0.04em"
+      >
+        every shell command
+      </text>
+      <rect x="327.4" y="216" width="109.2" height="14" rx="2" fill="#0c1117" />
+      <text
+        x="382"
+        y="226"
+        fill="#8e98ac"
+        font-size="8"
+        font-family="'Geist Mono', monospace"
+        text-anchor="middle"
+        letter-spacing="0.06em"
+      >
+        YOUR CHANGES FIRST
+      </text>
+      <rect x="314.4" y="316" width="135.2" height="14" rx="2" fill="#0c1117" />
+      <text
+        x="382"
+        y="326"
+        fill="#bfc0c0"
+        font-size="9"
+        font-family="'Geist Mono', monospace"
+        text-anchor="middle"
+        letter-spacing="0.04em"
+      >
+        output + changed files
+      </text>
+
+      <rect x="64" y="152" width="208" height="112" rx="6" fill="#0c1117" />
+      <rect
+        x="64"
+        y="152"
+        width="208"
+        height="112"
+        rx="6"
+        fill="rgba(191,192,192,0.10)"
+        stroke="#8e98ac"
+        stroke-width="1"
+      />
+      <rect
+        x="72"
+        y="158"
+        width="44"
+        height="12"
+        rx="2"
+        fill="transparent"
+        stroke="rgba(142,152,172,0.40)"
+        stroke-width="0.8"
+      />
+      <text
+        x="94.0"
+        y="167"
+        fill="#8e98ac"
+        font-size="7"
+        font-family="'Geist Mono', monospace"
+        text-anchor="middle"
+        letter-spacing="0.08em"
+      >
+        LOCAL
+      </text>
+      <text
+        x="168.0"
+        y="204"
+        fill="#f5f5f5"
+        font-size="12"
+        font-weight="600"
+        font-family="'Geist', sans-serif"
+        text-anchor="middle"
+      >
+        OpenCode
+      </text>
+      <text
+        x="168.0"
+        y="226"
+        fill="#bfc0c0"
+        font-size="9"
+        font-family="'Geist Mono', monospace"
+        text-anchor="middle"
+      >
+        edits your files here
+      </text>
+      <text
+        x="168.0"
+        y="242"
+        fill="#8e98ac"
+        font-size="9"
+        font-family="'Geist Mono', monospace"
+        text-anchor="middle"
+      >
+        model key stays here
+      </text>
+
+      <rect x="496" y="152" width="200" height="112" rx="6" fill="#0c1117" />
+      <rect
+        x="496"
+        y="152"
+        width="200"
+        height="112"
+        rx="6"
+        fill="rgba(240,138,89,0.10)"
+        stroke="#f08a59"
+        stroke-width="1"
+      />
+      <rect
+        x="504"
+        y="158"
+        width="56"
+        height="12"
+        rx="2"
+        fill="transparent"
+        stroke="rgba(240,138,89,0.50)"
+        stroke-width="0.8"
+      />
+      <text
+        x="532.0"
+        y="167"
+        fill="#f08a59"
+        font-size="7"
+        font-family="'Geist Mono', monospace"
+        text-anchor="middle"
+        letter-spacing="0.08em"
+      >
+        SANDBOX
+      </text>
+      <text
+        x="596.0"
+        y="204"
+        fill="#f5f5f5"
+        font-size="12"
+        font-weight="600"
+        font-family="'Geist', sans-serif"
+        text-anchor="middle"
+      >
+        Project sandbox
+      </text>
+      <text
+        x="596.0"
+        y="226"
+        fill="#bfc0c0"
+        font-size="9"
+        font-family="'Geist Mono', monospace"
+        text-anchor="middle"
+      >
+        same files, git-synced
+      </text>
+      <text
+        x="596.0"
+        y="242"
+        fill="#8e98ac"
+        font-size="9"
+        font-family="'Geist Mono', monospace"
+        text-anchor="middle"
+      >
+        paused when idle
+      </text>
+
+      <rect x="744" y="152" width="160" height="112" rx="6" fill="#0c1117" />
+      <rect
+        x="744"
+        y="152"
+        width="160"
+        height="112"
+        rx="6"
+        fill="#151b23"
+        stroke="#f5f5f5"
+        stroke-width="1"
+      />
+      <rect
+        x="752"
+        y="158"
+        width="38"
+        height="12"
+        rx="2"
+        fill="transparent"
+        stroke="rgba(245,245,245,0.40)"
+        stroke-width="0.8"
+      />
+      <text
+        x="771.0"
+        y="167"
+        fill="rgba(245,245,245,0.80)"
+        font-size="7"
+        font-family="'Geist Mono', monospace"
+        text-anchor="middle"
+        letter-spacing="0.08em"
+      >
+        RUNS
+      </text>
+      <text
+        x="824.0"
+        y="204"
+        fill="#f5f5f5"
+        font-size="12"
+        font-weight="600"
+        font-family="'Geist', sans-serif"
+        text-anchor="middle"
+      >
+        Commands
+      </text>
+      <text
+        x="824.0"
+        y="226"
+        fill="#bfc0c0"
+        font-size="9"
+        font-family="'Geist Mono', monospace"
+        text-anchor="middle"
+      >
+        tests, builds, servers
+      </text>
+      <text
+        x="824.0"
+        y="242"
+        fill="#8e98ac"
+        font-size="9"
+        font-family="'Geist Mono', monospace"
+        text-anchor="middle"
+      >
+        preview URLs
+      </text>
+    </svg>
+  </body>
+</html>

@@ -5,11 +5,11 @@ import { describeNetwork } from "../options.js"
 import type { GitHistory } from "../shell/runner.js"
 
 export async function readStatus(plugin: PluginContext): Promise<{ text: string; line: string }> {
-  const { opts, root, project, box, runner, sandboxSwitch } = plugin
-  const sandbox = box.peek()
+  const { opts, root, project, projectSandbox, runner, sandboxSwitch } = plugin
+  const sandbox = projectSandbox.peek()
   const sync = runner.lastSync()
   const error = runner.lastError()
-  const [metrics, saved] = await Promise.all([box.metrics(), box.savedSnapshot()])
+  const [metrics, saved] = await Promise.all([projectSandbox.metrics(), projectSandbox.savedSnapshot()])
   const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024)} MB`
   const usage = metrics
     ? `CPU ${Math.round(metrics.cpuUsedPct)}% of ${metrics.cpuCount}, memory ${mb(metrics.memUsed)} of ${mb(metrics.memTotal)}, disk ${mb(metrics.diskUsed)} of ${mb(metrics.diskTotal)}`

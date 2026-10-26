@@ -1,7 +1,7 @@
 /** What the plugin's hooks, tools and commands share. */
 
 import type { Plugin } from "@opencode/plugin"
-import type { Box } from "../sandbox/box.js"
+import type { ProjectSandbox } from "../sandbox/project-sandbox.js"
 import type { Options } from "../options.js"
 import type { Runner } from "../shell/runner.js"
 
@@ -18,7 +18,7 @@ export interface PluginContext {
   root: string | undefined
   /** `root`, or the opened folder outside a git checkout. */
   project: string
-  box: Box
+  projectSandbox: ProjectSandbox
   runner: Runner
   sandboxSwitch: SandboxSwitch
 }

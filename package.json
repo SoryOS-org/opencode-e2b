@@ -3,6 +3,9 @@
   "version": "0.2.0",
   "private": true,
   "description": "E2B sandboxes for OpenCode: workspaces for OpenCode 1, sandboxed shell commands for OpenCode 2",
+  "bin": {
+    "opencode-e2b": "dist/v2/cli/main.js"
+  },
   "files": [
     "dist",
     "bin",
